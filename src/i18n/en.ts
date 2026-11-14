@@ -38,7 +38,9 @@ const messages = {
   off: 'Off',
   myProfile: 'My profile',
   removeGame: 'Remove',
-  removeGameAsk: 'Remove this game from your list?',
+  removeGameWith: (name: string) => `Remove game with ${name}`,
+  removeGameAsk: (name: string) => `Remove your game with ${name} from this list?`,
+  removeGameNote: 'It stays on the other player’s device.',
   shareAgain: 'Share link again',
   openGame: (name: string) => `Open game with ${name}`,
 
