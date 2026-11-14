@@ -1,33 +1,5 @@
-import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test';
-import { cellLabel, type GameDoc, type SeatIndex } from '../src/game/types';
-import { openDocReader, pickTarget, type DocReader } from './helpers';
-
-async function startAndProfile(page: Page, name: string): Promise<void> {
-  await page.getByRole('button', { name: /Tap to start/ }).click();
-  await page.getByLabel('Your name').fill(name);
-  await page.getByRole('button', { name: /Save/ }).click();
-}
-
-async function newPlayer(browser: Browser): Promise<{ context: BrowserContext; page: Page }> {
-  const context = await browser.newContext({ reducedMotion: 'reduce' });
-  return { context, page: await context.newPage() };
-}
-
-async function shuffleAndReady(page: Page): Promise<void> {
-  await page.getByRole('button', { name: /Shuffle/ }).click();
-  const ready = page.getByRole('button', { name: /Ready!/ });
-  await expect(ready).toBeEnabled();
-  await ready.click();
-}
-
-/** `seat` aims in "Their sea" and fires; resolves once the doc has the shot. */
-async function fireAt(page: Page, reader: DocReader, doc: GameDoc, seat: SeatIndex, hit: boolean): Promise<void> {
-  const cell = pickTarget(doc, seat, hit);
-  const shots = doc.shots[seat].length;
-  await page.locator('.their').getByRole('gridcell', { name: `${cellLabel(cell)}, water`, exact: true }).click();
-  await page.getByRole('button', { name: /FIRE!/ }).click();
-  await expect.poll(async () => (await reader.read())?.shots[seat].length, { intervals: [200] }).toBe(shots + 1);
-}
+import { expect, test, type Page } from '@playwright/test';
+import { fireAt, newPlayer, openDocReader, shuffleAndReady, startAndProfile, type DocReader } from './helpers';
 
 test('two players: invite, play a round, rematch, resume after a close', async ({ browser }) => {
   const a = await newPlayer(browser);
