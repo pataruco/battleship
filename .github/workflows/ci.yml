@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches-ignore:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NATS_CLI_VERSION: 0.5.1
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install nats CLI
+        run: |
+          set -euo pipefail
+          asset="nats-${NATS_CLI_VERSION}-linux-amd64"
+          curl -fsSL -o "$RUNNER_TEMP/nats.zip" \
+            "https://github.com/nats-io/natscli/releases/download/v${NATS_CLI_VERSION}/${asset}.zip"
+          unzip -q "$RUNNER_TEMP/nats.zip" -d "$RUNNER_TEMP/nats"
+          sudo install -m 0755 "$RUNNER_TEMP/nats/${asset}/nats" /usr/local/bin/nats
+          nats --version
+
+      - run: npm ci
+      - run: npm run test:rust
+      - run: npm test
+      - run: npm run typecheck
+
+      - name: Start local NATS
+        run: npm run nats:up
+
+      - run: npm run test:int
+      - run: npm run build
+
+      # The e2e suite arrives with Playwright config; these steps switch on then.
+      - name: Install Playwright browsers
+        if: hashFiles('playwright.config.ts') != ''
+        run: npx playwright install --with-deps chromium webkit
+
+      - name: End-to-end tests
+        if: hashFiles('playwright.config.ts') != ''
+        run: npm run e2e

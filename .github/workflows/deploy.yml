@@ -1,0 +1,60 @@
+name: Deploy to Pages
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  pages: write
+  id-token: write
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      VITE_NATS_URL: ${{ vars.VITE_NATS_URL }}
+      VITE_KV_BUCKET: ${{ vars.VITE_KV_BUCKET }}
+      VITE_NATS_AUTH: creds
+      VITE_NATS_CREDS: ${{ secrets.VITE_NATS_CREDS }}
+    steps:
+      - name: Require VITE_NATS_URL
+        run: |
+          if [ -z "$VITE_NATS_URL" ]; then
+            echo "::error::Repository variable VITE_NATS_URL is empty; set it before deploying."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci && npm run build
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
