@@ -1,10 +1,14 @@
 import { gameLink } from '../../crypto/link';
 import type { Action, Seat } from '../../game/types';
+import { play } from '../../fx/audio';
+import { reducedMotion } from '../../fx/motion';
 import { t } from '../../i18n';
+import { avatarIcon } from '../../theme/default/avatars';
+import { fxLayer } from '../../ui/fx-layer';
 import type { ApplyResult } from '../../net/game-store';
 import { el } from '../el';
 import { logError } from '../errors';
-import type { BannerKind, ControllerState, GameController } from '../game-controller';
+import type { BannerKind, ControllerState, GameController, MovedDetail } from '../game-controller';
 import { session } from '../session';
 import { renderBattle } from './battle';
 import { renderInvite } from './invite';
@@ -162,7 +166,15 @@ export function renderGame(app: HTMLElement, o: GameScreenOptions): () => void {
     } else if (next !== shown || round !== shownRound) {
       shown = next;
       shownRound = round;
-      build(next);
+      // A soft cross-fade between screens where the browser can do it (never under reduced motion).
+      const start = (document as Document & { startViewTransition?: (cb: () => void) => unknown }).startViewTransition;
+      if (typeof start === 'function' && !reducedMotion() && view === null) {
+        start.call(document, () => {
+          if (!disposed && shown === next) build(next);
+        });
+      } else {
+        build(next);
+      }
     } else {
       view?.update(s);
     }
@@ -173,6 +185,16 @@ export function renderGame(app: HTMLElement, o: GameScreenOptions): () => void {
   };
 
   let shownRound = 0;
+
+  /** A friend took the second seat: chime, and their avatar slides in. */
+  const onMoved = (e: Event) => {
+    const { prev, next } = (e as CustomEvent<MovedDetail>).detail;
+    const guest = next.seats[1];
+    if (!prev || prev.seats[1] || !guest || c?.state.seat !== 0) return;
+    play('chime');
+    const chip = el('span', { class: 'join-chip' }, avatarIcon(guest.avatar, 'avatar'), ` ${guest.name}`);
+    fxLayer().slideIn(chip);
+  };
 
   const relang = () => {
     shown = null;
@@ -189,6 +211,7 @@ export function renderGame(app: HTMLElement, o: GameScreenOptions): () => void {
       c = ctrl;
       session.lastGameId = o.id;
       c.addEventListener('change', paint);
+      c.addEventListener('moved', onMoved);
       paint();
     })
     .catch(() => {
@@ -200,6 +223,7 @@ export function renderGame(app: HTMLElement, o: GameScreenOptions): () => void {
     view?.dispose();
     window.removeEventListener('lang', relang);
     c?.removeEventListener('change', paint);
+    c?.removeEventListener('moved', onMoved);
     c?.dispose();
   };
 }
