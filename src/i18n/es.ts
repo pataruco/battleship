@@ -61,6 +61,7 @@ export const es: Messages = {
   copied: '¡Copiado!',
   shareText: (name) => `¡${name} quiere jugar Batalla naval contigo!`,
   placeMyShips: 'Poner mis barcos',
+  copyFailed: 'Copia este enlace:',
   qrAlt: 'Código para unirse al juego',
 
   // Join and who are you
@@ -73,8 +74,8 @@ export const es: Messages = {
   thatsMe: 'Soy yo',
 
   // Unavailable
-  unavailableTitle: 'No se puede abrir este juego',
-  unavailableBody: 'Puede que el enlace sea viejo o que el juego ya no exista.',
+  unavailableTitle: 'Este juego no se puede abrir ahora',
+  unavailableBody: 'Pídele al otro jugador que lo abra.',
   startNewGame: 'Empezar un juego nuevo',
   updateNeededTitle: 'Falta actualizar',
   updateNeededBody: 'Este juego necesita una versión más nueva de la app. Recarga la página.',
@@ -128,6 +129,8 @@ export const es: Messages = {
   busy: 'El mar está lleno. Probamos de nuevo pronto',
   authFailed: 'Falta actualizar. Recarga la página',
   backOnline: 'De nuevo en línea',
+  retryBanner: 'No se pudo enviar. Inténtalo de nuevo',
+  rejectedBanner: 'El juego siguió. Vuelve a mirar',
   closeBanner: 'Cerrar',
 
   // Nudges and install hints

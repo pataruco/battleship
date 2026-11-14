@@ -60,6 +60,7 @@ const messages = {
   copied: 'Copied!',
   shareText: (name: string) => `${name} wants to play Sea Battle with you!`,
   placeMyShips: 'Place my ships',
+  copyFailed: 'Copy this link:',
   qrAlt: 'Code to join the game',
 
   // Join and who are you
@@ -72,8 +73,8 @@ const messages = {
   thatsMe: "That's me",
 
   // Unavailable
-  unavailableTitle: "This game can't be opened",
-  unavailableBody: 'The link may be old or the game may be gone.',
+  unavailableTitle: "This game can't be opened right now",
+  unavailableBody: 'Ask the other player to open it.',
   startNewGame: 'Start a new game',
   updateNeededTitle: 'Update needed',
   updateNeededBody: 'This game needs a newer version of the app. Reload the page.',
@@ -127,6 +128,8 @@ const messages = {
   busy: 'The sea is busy. Trying again soon',
   authFailed: 'Update needed. Reload the page',
   backOnline: 'Back online',
+  retryBanner: "That didn't go through. Try again",
+  rejectedBanner: 'The game moved on. Take another look',
   closeBanner: 'Close',
 
   // Nudges and install hints

@@ -48,6 +48,8 @@ export class Presence extends EventTarget {
   private check: unknown = null;
   /** When the opponent was last heard from; null while they are away. */
   private lastSeen: number | null = null;
+  /** The `bye` sealed ahead of time for `leave`. */
+  private bye: { seq: number; data: Uint8Array } | null = null;
 
   constructor(o: {
     nc: BusLike;
@@ -78,31 +80,62 @@ export class Presence extends EventTarget {
     const sub = this.nc.subscribe(this.subject);
     this.sub = sub;
     void this.listen(sub);
-    this.beat = this.timers.setInterval(() => void this.send('hb'), HEARTBEAT_MS);
+    this.beat = this.timers.setInterval(() => {
+      void this.send('hb');
+      void this.prepareBye();
+    }, HEARTBEAT_MS);
     this.check = this.timers.setInterval(() => this.checkAway(), CHECK_MS);
-    await this.send('hb');
+    await Promise.all([this.send('hb'), this.prepareBye()]);
   }
 
   /** Says `bye`, then stops beating and listening. Safe to call twice. */
   async stop(): Promise<void> {
+    if (!this.halt()) return;
+    await this.send('bye');
+  }
+
+  /**
+   * For `pagehide`: stops and publishes the bye sealed ahead of time, synchronously, because
+   * the page may be frozen before any await resumes. Safe to call twice.
+   */
+  leave(): void {
+    if (!this.halt() || !this.bye) return;
+    this.publish(this.bye.data);
+  }
+
+  /** Seals the `bye` for the current seq ahead of time (call when seq changes). */
+  async prepareBye(): Promise<void> {
+    const seq = this.getSeq();
+    if (this.bye?.seq === seq) return;
+    const msg: PresenceMsg = { t: 'bye', seat: this.me.seat, playerId: this.me.playerId, seq };
+    const data = await this.sealer.sealJson('here', msg);
+    if (this.getSeq() === seq) this.bye = { seq, data };
+  }
+
+  /** After an acknowledged write: tell the other device to `kv.get` (R1). */
+  announceMoved(seq: number): Promise<void> {
+    void this.prepareBye();
+    return this.send('moved', seq);
+  }
+
+  /** Stops beating and listening; false when already stopped. */
+  private halt(): boolean {
     const sub = this.sub;
-    if (!sub) return;
+    if (!sub) return false;
     this.sub = null;
     this.timers.clearInterval(this.beat as never);
     this.timers.clearInterval(this.check as never);
     sub.unsubscribe();
     this.lastSeen = null;
-    await this.send('bye');
-  }
-
-  /** After an acknowledged write: tell the other device to `kv.get` (R1). */
-  announceMoved(seq: number): Promise<void> {
-    return this.send('moved', seq);
+    return true;
   }
 
   private async send(t: PresenceMsg['t'], seq = this.getSeq()): Promise<void> {
     const msg: PresenceMsg = { t, seat: this.me.seat, playerId: this.me.playerId, seq };
-    const data = await this.sealer.sealJson('here', msg);
+    this.publish(await this.sealer.sealJson('here', msg));
+  }
+
+  private publish(data: Uint8Array): void {
     try {
       this.nc.publish(this.subject, data);
     } catch {
@@ -147,5 +180,56 @@ export class Presence extends EventTarget {
 
   private emit<T>(type: string, detail: T): void {
     this.dispatchEvent(new CustomEvent<T>(type, { detail }));
+  }
+}
+
+/**
+ * Listen-only presence for a device that has no seat yet (the Who-are-you screen): which seats
+ * were heard from in the last 45 s. Sends nothing. Event: `change` on every message.
+ */
+export class SeatWatch extends EventTarget {
+  private readonly nc: BusLike;
+  private readonly sealer: Sealer;
+  private readonly subject: string;
+  private readonly now: () => number;
+  private sub: Subscription | null = null;
+  private readonly seen: [number | null, number | null] = [null, null];
+
+  constructor(o: { nc: BusLike; sealer: Sealer; id: string; now?: () => number }) {
+    super();
+    this.nc = o.nc;
+    this.sealer = o.sealer;
+    this.subject = `bship.${o.id}.here`;
+    this.now = o.now ?? Date.now;
+  }
+
+  start(): void {
+    if (this.sub) return;
+    const sub = this.nc.subscribe(this.subject);
+    this.sub = sub;
+    void this.listen(sub);
+  }
+
+  stop(): void {
+    this.sub?.unsubscribe();
+    this.sub = null;
+  }
+
+  isHere(seat: SeatIndex): boolean {
+    const t = this.seen[seat];
+    return t !== null && this.now() - t < AWAY_MS;
+  }
+
+  private async listen(sub: Subscription): Promise<void> {
+    try {
+      for await (const m of sub) {
+        const msg = await this.sealer.openJson<unknown>('here', m.data);
+        if (this.sub !== sub || !isPresenceMsg(msg)) continue;
+        this.seen[msg.seat] = msg.t === 'bye' ? null : this.now();
+        this.dispatchEvent(new Event('change'));
+      }
+    } catch {
+      // Subscription closed with the connection.
+    }
   }
 }

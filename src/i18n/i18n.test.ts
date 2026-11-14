@@ -26,6 +26,10 @@ describe('i18n', () => {
     expect(en.ago(-2 * 86400e3)).toContain('2 days');
     expect(en.ago(-5 * 60e3)).toContain('5 minutes');
   });
+  it('clamps future offsets to now', () => {
+    expect(en.ago(3 * 3600e3)).toBe(en.ago(0));
+    expect(es.ago(90e3)).toBe(es.ago(0));
+  });
   it('names ships in both languages', () => {
     expect(en.shipName(0)).toBe('Flagship');
     expect(es.shipName(4)).toBe('Bote');

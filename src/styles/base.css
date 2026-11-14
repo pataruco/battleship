@@ -190,6 +190,8 @@
   .card-text {
     display: grid;
     gap: 0.1rem;
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
   .badge {
     font-weight: bold;
@@ -349,6 +351,101 @@
     color: var(--miss);
     margin: 0.5rem 0 0;
   }
+
+  /* Game screens (Task 15) */
+  .banner {
+    margin: 0 auto;
+    max-width: 40rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.75rem;
+    background: var(--foam);
+    border: 2px solid var(--accent);
+    font-weight: bold;
+  }
+  .banner[hidden] {
+    display: none;
+  }
+  .spinner {
+    text-align: center;
+    font-size: 1.3rem;
+  }
+  .status {
+    margin: 0;
+    min-height: 1.2em;
+    font-weight: bold;
+    color: var(--ok);
+  }
+  .invite-share {
+    display: grid;
+    gap: 0.75rem;
+    align-items: center;
+  }
+  @media (min-width: 600px) {
+    .invite-share {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+  .invite-qr {
+    display: block;
+    width: min(100%, 20rem);
+    margin: 0 auto;
+    color: var(--ink);
+    background: #fff;
+    border-radius: 1rem;
+  }
+  .invite-qr svg {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+  .invite-actions {
+    display: grid;
+    gap: 0.75rem;
+  }
+  .waiting {
+    margin: 0;
+    font-size: 1.2rem;
+    text-align: center;
+  }
+  button.link {
+    border: 0;
+    background: none;
+    text-decoration: underline;
+    color: var(--sea-deep);
+  }
+  .avatar.hero {
+    width: 7rem;
+    height: 7rem;
+    margin: 0 auto;
+  }
+  .who-seats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+  }
+  .who-pick {
+    display: grid;
+    justify-items: center;
+    gap: 0.4rem;
+    padding: 0.75rem;
+    font-size: 1.3rem;
+    font-weight: bold;
+    overflow-wrap: anywhere;
+  }
+  .who-pick .avatar {
+    width: 5rem;
+    height: 5rem;
+  }
+  dialog.confirm {
+    max-width: 24rem;
+    border: 2px solid var(--sea-deep);
+    border-radius: 1rem;
+    font-size: 1.2rem;
+  }
+  .confirm-actions {
+    display: grid;
+    gap: 0.5rem;
+  }
 }
 
 @layer fx {
@@ -356,5 +453,20 @@
     sea-grid .cell {
       transition: background-color 0.15s;
     }
+    .waiting {
+      animation: bob 1.6s ease-in-out infinite;
+    }
+  }
+}
+
+@keyframes bob {
+  0%,
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  50% {
+    transform: translateY(-4px);
+    opacity: 0.6;
   }
 }

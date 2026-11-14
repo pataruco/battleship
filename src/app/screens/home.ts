@@ -73,7 +73,10 @@ function toggle(label: string, icon: string, on: boolean, onChange: (v: boolean)
   return b;
 }
 
-export function renderHome(app: HTMLElement, deps: { profile: Profile | null; onNewGame: () => void }): () => void {
+export function renderHome(
+  app: HTMLElement,
+  deps: { profile: Profile | null; onNewGame: () => Promise<void> },
+): () => void {
   const games = el('ul', { class: 'games' });
   const live = el('p', { class: 'error', role: 'alert' });
 
@@ -92,8 +95,10 @@ export function renderHome(app: HTMLElement, deps: { profile: Profile | null; on
     try {
       text = await navigator.clipboard.readText();
     } catch {
-      text = window.prompt(t().pastePrompt) ?? '';
+      // blocked or unsupported: ask instead
     }
+    // An empty clipboard falls through to the prompt too.
+    if (!text.trim()) text = window.prompt(t().pastePrompt) ?? '';
     if (!text.trim()) return;
     const hash = linkToHash(text);
     if (hash) window.location.hash = hash;
@@ -112,7 +117,16 @@ export function renderHome(app: HTMLElement, deps: { profile: Profile | null; on
       ? el('a', { class: 'me', href: '#/profile', 'aria-label': `${m.myProfile}: ${deps.profile.name}` }, avatarIcon(deps.profile.avatar, 'avatar'), el('span', {}, deps.profile.name))
       : el('a', { class: 'me', href: '#/profile' }, m.myProfile);
     const newGame = el('button', { type: 'button', class: 'big primary' }, el('span', { 'aria-hidden': 'true' }, '➕'), ` ${m.newGame}`);
-    newGame.addEventListener('click', deps.onNewGame);
+    newGame.addEventListener('click', async () => {
+      newGame.disabled = true; // one tap, one game
+      live.textContent = '';
+      try {
+        await deps.onNewGame();
+      } catch {
+        live.textContent = t().offline;
+        newGame.disabled = false;
+      }
+    });
     const paste = el('button', { type: 'button' }, el('span', { 'aria-hidden': 'true' }, '📋'), ` ${m.pasteLink}`);
     paste.addEventListener('click', () => void pasteLink());
 
