@@ -31,6 +31,9 @@ function winHoldMs(): number {
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, Math.max(0, ms)));
 
+/** Rounds whose coin toss has been shown (once per game and round, not per render). */
+const tossed = new Set<string>();
+
 /** The board square's element, by cell number. */
 const cellEl = (grid: HTMLElement, cell: Cell): Element | null => grid.querySelector(`[data-cell="${cell}"]`);
 
@@ -42,9 +45,12 @@ function shipCells(fleet: GameDoc['fleets'][number], index: number): Cell[] {
 }
 
 /** Sound, burst and sinking for one shot landing on `grid` (mine or theirs). */
-function impact(grid: HTMLElement, cell: Cell, kind: string, sunkCells: Cell[]): void {
+function impact(grid: HTMLElement, cell: Cell, kind: string, sunkCells: Cell[], later: (fn: () => void, ms: number) => void): void {
   const fx = fxLayer();
-  const target = cellEl(grid, cell);
+  const found = cellEl(grid, cell);
+  // A hidden board (My sea on a phone) has no box: keep sound and speech, skip the visuals.
+  const rect = found?.getBoundingClientRect();
+  const target = rect && rect.width > 0 && rect.height > 0 ? found : null;
   if (kind === 'miss') {
     play('splash');
     if (target) fx.splash(target);
@@ -53,8 +59,8 @@ function impact(grid: HTMLElement, cell: Cell, kind: string, sunkCells: Cell[]):
   play('boom');
   if (target) fx.boom(target);
   if (kind === 'sunk' || kind === 'win') {
-    setTimeout(() => play('glug'), 450);
-    fx.sink(sunkCells.map((c) => cellEl(grid, c)).filter((e): e is Element => e !== null));
+    later(() => play('glug'), 450);
+    if (target) fx.sink(sunkCells.map((c) => cellEl(grid, c)).filter((e): e is Element => e !== null));
   }
 }
 
@@ -128,6 +134,14 @@ export function renderBattle(root: HTMLElement, o: GameViewOptions): GameView {
   /** A win's result is on screen: Round over waits. */
   let celebrating = false;
   let disposed = false;
+  const timers = new Set<ReturnType<typeof setTimeout>>();
+  const later = (fn: () => void, ms: number) => {
+    const id = setTimeout(() => {
+      timers.delete(id);
+      fn();
+    }, ms);
+    timers.add(id);
+  };
   let presenceKnown = c.state.opponentHere;
   const graceTimer = setTimeout(() => {
     presenceKnown = true;
@@ -168,10 +182,10 @@ export function renderBattle(root: HTMLElement, o: GameViewOptions): GameView {
   /** My shot's result: sound, burst, and the words out loud. A win adds the fanfare and confetti. */
   const announceMine = (doc: GameDoc, cell: Cell, said: { text: string; kind: string }) => {
     update(c.state);
-    impact(target, cell, said.kind, said.kind === 'sunk' || said.kind === 'win' ? shipCells(doc.fleets[foe], shipIndexAt(doc.fleets[foe], cell)) : []);
+    impact(target, cell, said.kind, said.kind === 'sunk' || said.kind === 'win' ? shipCells(doc.fleets[foe], shipIndexAt(doc.fleets[foe], cell)) : [], later);
     say(said.text);
     if (said.kind === 'win') {
-      setTimeout(() => play('fanfare'), 500);
+      later(() => play('fanfare'), 500);
       fxLayer().confetti();
     }
   };
@@ -245,13 +259,15 @@ export function renderBattle(root: HTMLElement, o: GameViewOptions): GameView {
       const state = safeBoardCells(next.fleets[seat], next.shots[foe], true)[cell];
       const label = cellLabel(cell);
       let words: string;
+      const spoken = mm.cellSpoken(label);
       if (state === 'sunk') words = mm.theySank(mm.shipName(shipIndexAt(next.fleets[seat], cell)));
       else if (state === 'hit') words = mm.theyHit(label);
       else words = mm.theyMissed(label);
       live.say(words);
+      const voiced = state === 'sunk' ? words : state === 'hit' ? mm.theyHit(spoken) : mm.theyMissed(spoken);
       fx(`incoming-${state ?? 'miss'}`);
-      impact(own, cell, state === 'sunk' || state === 'hit' ? state : 'miss', state === 'sunk' ? shipCells(next.fleets[seat], shipIndexAt(next.fleets[seat], cell)) : []);
-      say(words);
+      impact(own, cell, state === 'sunk' || state === 'hit' ? state : 'miss', state === 'sunk' ? shipCells(next.fleets[seat], shipIndexAt(next.fleets[seat], cell)) : [], later);
+      say(voiced);
     }
     const reaction = newReaction(prev, next, foe);
     if (reaction) {
@@ -325,7 +341,9 @@ export function renderBattle(root: HTMLElement, o: GameViewOptions): GameView {
   root.replaceChildren(section);
   update(c.state);
   const opening = c.state.doc;
-  if (opening && opening.shots[0].length + opening.shots[1].length === 0) {
+  const tossKey = `${c.id}:${opening?.round}`;
+  if (opening && opening.shots[0].length + opening.shots[1].length === 0 && !tossed.has(tossKey)) {
+    tossed.add(tossKey);
     fxLayer().coinToss(`${t().turnOf(opening.seats[opening.firstTurn]?.name ?? '')}`);
   }
   void maybeKeepSafe(section, { id: c.id, link: o.link, myName: myName(), onShared: o.onShared });
@@ -335,6 +353,8 @@ export function renderBattle(root: HTMLElement, o: GameViewOptions): GameView {
     busy: () => held !== null || celebrating,
     dispose: () => {
       disposed = true;
+      for (const id of timers) clearTimeout(id);
+      timers.clear();
       clearTimeout(graceTimer);
       c.removeEventListener('moved', onMoved);
     },

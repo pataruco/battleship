@@ -4,6 +4,7 @@ export type Sfx = 'splash' | 'boom' | 'glug' | 'fanfare' | 'chime' | 'pop';
 
 let ctx: AudioContext | null = null;
 let noiseBuffer: AudioBuffer | null = null;
+let wired = false;
 
 /** Create/resume the `AudioContext` inside the start tap (one gesture) and ask iOS for playback audio. */
 export function unlockAudio(): void {
@@ -14,6 +15,12 @@ export function unlockAudio(): void {
     if (!Ctor) return;
     ctx ??= new Ctor();
     void ctx.resume();
+    if (!wired) {
+      wired = true;
+      const wake = () => void ctx?.resume().catch(() => {});
+      document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && wake());
+      document.addEventListener('pointerdown', wake, { passive: true });
+    }
     // A silent tick completes the unlock on older iOS.
     const g = ctx.createGain();
     g.gain.value = 0;
@@ -65,7 +72,12 @@ function hiss(c: AudioContext, at: number, dur: number, freq: number, vol: numbe
 
 /** Plays a synthesised effect. No-op when sound is off, the context is locked, or Web Audio is missing. */
 export function play(sfx: Sfx): void {
-  if (!ctx || ctx.state !== 'running' || !getPrefs().sound) return;
+  if (!ctx || !getPrefs().sound) return;
+  if (ctx.state !== 'running') {
+    // iOS suspends/interrupts the context after backgrounding: wake it for the next effect.
+    void ctx.resume().catch(() => {});
+    return;
+  }
   const c = ctx;
   const t = c.currentTime;
   try {

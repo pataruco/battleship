@@ -12,9 +12,10 @@ const noop = (): Animation | null => null;
 export function animate(el: Element, keyframes: Keyframe[], opts: KeyframeAnimationOptions = {}): Animation | null {
   if (typeof el.animate !== 'function') return noop();
   if (reducedMotion()) {
-    const from = keyframes[0]?.opacity ?? 0;
-    const to = keyframes[keyframes.length - 1]?.opacity ?? 1;
-    return el.animate([{ opacity: from }, { opacity: to }], { duration: 150, fill: opts.fill ?? 'none' });
+    // A fade in to the keyframes' peak opacity (they often run 0 -> 1 -> 0, so first/last would be invisible).
+    const peak = Math.max(0, ...keyframes.map((k) => Number(k.opacity ?? 0)));
+    const visible = peak > 0 ? peak : 1;
+    return el.animate([{ opacity: 0 }, { opacity: visible }], { duration: 150, fill: 'none' });
   }
   return el.animate(keyframes, opts);
 }
