@@ -25,12 +25,16 @@ jobs:
       VITE_NATS_AUTH: creds
       VITE_NATS_CREDS: ${{ secrets.VITE_NATS_CREDS }}
     steps:
-      - name: Require VITE_NATS_URL
+      - name: Require the NATS settings
         run: |
-          if [ -z "$VITE_NATS_URL" ]; then
-            echo "::error::Repository variable VITE_NATS_URL is empty; set it before deploying."
-            exit 1
-          fi
+          missing=0
+          for name in VITE_NATS_URL VITE_KV_BUCKET VITE_NATS_CREDS; do
+            if [ -z "${!name}" ]; then
+              echo "::error::$name is empty; set it (repository variable, or secret for VITE_NATS_CREDS) before deploying."
+              missing=1
+            fi
+          done
+          exit $missing
 
       - uses: actions/checkout@v4
 
