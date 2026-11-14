@@ -168,7 +168,7 @@ export function renderGame(app: HTMLElement, o: GameScreenOptions): () => void {
       shownRound = round;
       // A soft cross-fade between screens where the browser can do it (never under reduced motion).
       const start = (document as Document & { startViewTransition?: (cb: () => void) => unknown }).startViewTransition;
-      if (typeof start === 'function' && !reducedMotion() && view === null) {
+      if (typeof start === 'function' && !reducedMotion()) {
         start.call(document, () => {
           if (!disposed && shown === next) build(next);
         });
