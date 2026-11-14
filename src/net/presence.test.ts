@@ -159,13 +159,14 @@ describe('Presence', () => {
     expect((await sent()).at(-1)).toMatchObject({ t: 'bye', seat: 1, playerId: 'p1' });
   });
 
-  it('moved with a higher seq fires seq; equal or lower does not', async () => {
+  it('moved with a higher seq fires seq; an equal seq does not', async () => {
     const a = make(0);
     const b = make(1);
     await a.p.start();
     await b.p.start();
     await settle();
     seqs[0] = 5;
+    seqs[1] = 5;
     b.p.announceMoved(5);
     await settle();
     expect(a.seen.seq).toEqual([]);
@@ -184,6 +185,22 @@ describe('Presence', () => {
     await b.p.start();
     await settle();
     expect(a.seen.seq).toEqual([3]);
+  });
+
+  it('a peer behind us (lower seq) fires seq once per message, and stops once it has caught up', async () => {
+    const a = make(0);
+    const b = make(1);
+    seqs[0] = 7;
+    seqs[1] = 4; // b missed a move (or the server lost it): a re-reads, and writes back if needed
+    await a.p.start();
+    await b.p.start();
+    await settle();
+    expect(a.seen.seq).toEqual([4]);
+    // b refreshes and catches up; its next heartbeat carries the same seq: nothing more.
+    seqs[1] = 7;
+    await clock.advance(15_000);
+    expect(a.seen.seq).toEqual([4]);
+    expect(b.seen.seq).toEqual([7]);
   });
 
   it('ignores garbage, foreign-key and malformed messages', async () => {
@@ -286,17 +303,33 @@ describe('SeatWatch', () => {
 });
 
 describe('SeatWatch seq and Presence.abandon', () => {
-  it('SeatWatch fires seq for a higher seq than ours', async () => {
+  it('SeatWatch fires seq for a seq other than ours', async () => {
     const w = new SeatWatch({ nc: bus.client(), sealer, id, now: clock.now, getSeq: () => 2 });
     const seen: number[] = [];
     w.addEventListener('seq', (e) => seen.push((e as CustomEvent<{ seq: number }>).detail.seq));
     w.start();
     const a = make(0);
-    await a.p.start(); // seq 1: not newer
+    seqs[0] = 2;
+    await a.p.start(); // seq 2: same as ours
     await settle();
     a.p.announceMoved(3);
     await settle();
-    expect(seen).toEqual([3]);
+    a.p.announceMoved(1); // behind us
+    await settle();
+    expect(seen).toEqual([3, 1]);
+    w.stop();
+  });
+
+  it('SeatWatch without getSeq never fires seq', async () => {
+    const w = new SeatWatch({ nc: bus.client(), sealer, id, now: clock.now });
+    let fired = 0;
+    w.addEventListener('seq', () => fired++);
+    w.start();
+    const a = make(0);
+    await a.p.start();
+    a.p.announceMoved(3);
+    await settle();
+    expect(fired).toBe(0);
     w.stop();
   });
 
