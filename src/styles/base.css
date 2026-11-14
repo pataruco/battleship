@@ -7,7 +7,7 @@
   *::after {
     box-sizing: border-box;
   }
-  /* A class that sets display (button.big, .float) must never un-hide an element. */
+  /* A class that sets display (button.big) must never un-hide an element. */
   [hidden] {
     display: none !important;
   }
@@ -617,18 +617,6 @@
     font-size: 1.6rem;
     background: var(--paper);
   }
-  .float {
-    position: fixed;
-    left: 50%;
-    top: 40%;
-    margin: 0;
-    font-size: 6rem;
-    pointer-events: none;
-    translate: -50% -50%;
-  }
-  .float[hidden] {
-    display: none;
-  }
   .score {
     min-width: 0;
     overflow-wrap: anywhere;
@@ -665,6 +653,71 @@
 }
 
 @layer fx {
+  fx-layer {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    pointer-events: none;
+    overflow: hidden;
+  }
+  .fx-shell,
+  .fx-ring,
+  .fx-boom {
+    position: fixed;
+    will-change: transform, opacity;
+  }
+  .fx-shell {
+    font-size: 1.4rem;
+    color: var(--ink, #123);
+  }
+  .fx-ring {
+    inline-size: 3rem;
+    block-size: 3rem;
+    border: 4px solid #fff;
+    border-radius: 50%;
+    box-shadow: 0 0 0 2px #1d6fa5;
+  }
+  .fx-boom {
+    font-size: 3rem;
+  }
+  .fx-confetti {
+    position: fixed;
+    inset-block-start: 0;
+    inline-size: 10px;
+    block-size: 16px;
+    border-radius: 2px;
+  }
+  .fx-emoji {
+    position: fixed;
+    inset-block-end: 12vh;
+    font-size: 6rem;
+  }
+  .fx-coin {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    place-content: center;
+    justify-items: center;
+    gap: 0.5rem;
+    font-size: 1.6rem;
+    font-weight: 700;
+  }
+  .fx-coin-face {
+    display: block;
+    font-size: 5rem;
+  }
+  .fx-join {
+    position: fixed;
+    inset-block-start: 4rem;
+    inset-inline-start: 1rem;
+    padding: 0.5rem 1rem;
+    border-radius: 2rem;
+    background: #fff;
+    box-shadow: 0 2px 10px rgb(0 0 0 / 0.3);
+  }
+}
+
+@layer fx {
   @media (prefers-reduced-motion: no-preference) {
     sea-grid .cell {
       transition: background-color 0.15s;
@@ -675,16 +728,8 @@
     .play-again.pulse {
       animation: pulse 1.2s ease-in-out infinite;
     }
-    .float.go {
-      animation: float-up 2s ease-out forwards;
-    }
     .battle[data-fx='fire'] .their .cell.aimed {
       animation: pulse 0.3s ease-in-out infinite;
-    }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .float.go {
-      animation: fade 2s ease-out forwards;
     }
   }
 }
@@ -696,17 +741,6 @@
   }
   50% {
     transform: scale(1.05);
-  }
-}
-
-@keyframes float-up {
-  from {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-  to {
-    opacity: 0;
-    transform: translateY(-30vh) scale(1.4);
   }
 }
 

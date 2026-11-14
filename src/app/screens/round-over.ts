@@ -1,4 +1,5 @@
 import type { SeatIndex } from '../../game/types';
+import { say } from '../../fx/speech';
 import { t } from '../../i18n';
 import '../../ui/sea-grid';
 import { safeBoardCells } from '../board-cells';
@@ -58,5 +59,7 @@ export function renderRoundOver(root: HTMLElement, o: GameViewOptions): GameView
   root.replaceChildren(el('section', { class: `screen round-over ${won ? 'won' : 'lost'}` }, ...kids));
   update(c.state);
   live.say(`${headline} ${score.textContent ?? ''}`);
+  // The winner heard it at the winning shot; the other player hears a kind "Good game!".
+  if (!won) say(headline);
   return { update, dispose: () => {} };
 }

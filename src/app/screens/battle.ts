@@ -1,5 +1,9 @@
 import type { Cell, Emoji, GameDoc, Outcome, SeatIndex } from '../../game/types';
-import { cellLabel } from '../../game/types';
+import { cellLabel, FLEET_LENGTHS } from '../../game/types';
+import { play } from '../../fx/audio';
+import { newReaction } from '../../fx/reactions';
+import { say } from '../../fx/speech';
+import { fxLayer } from '../../ui/fx-layer';
 import { t } from '../../i18n';
 import type { ApplyResult } from '../../net/game-store';
 import '../../ui/emoji-bar';
@@ -14,7 +18,6 @@ import { maybeKeepSafe, shareLink } from './keep-safe';
 
 /** Shell flight: FIRE to result is never shorter than this. */
 export const FLIGHT_MS = 600;
-const FLOAT_MS = 2_000;
 /** A winning shot's result stays on screen this long before Round over (shorter under reduced motion). */
 export const WIN_HOLD_MS = 1_800;
 export const WIN_HOLD_REDUCED_MS = 600;
@@ -27,6 +30,33 @@ function winHoldMs(): number {
 }
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, Math.max(0, ms)));
+
+/** The board square's element, by cell number. */
+const cellEl = (grid: HTMLElement, cell: Cell): Element | null => grid.querySelector(`[data-cell="${cell}"]`);
+
+function shipCells(fleet: GameDoc['fleets'][number], index: number): Cell[] {
+  const ship = fleet?.[index];
+  if (!ship) return [];
+  const step = ship.dir === 'h' ? 1 : 10;
+  return Array.from({ length: FLEET_LENGTHS[index] ?? 0 }, (_, i) => ship.bow + i * step);
+}
+
+/** Sound, burst and sinking for one shot landing on `grid` (mine or theirs). */
+function impact(grid: HTMLElement, cell: Cell, kind: string, sunkCells: Cell[]): void {
+  const fx = fxLayer();
+  const target = cellEl(grid, cell);
+  if (kind === 'miss') {
+    play('splash');
+    if (target) fx.splash(target);
+    return;
+  }
+  play('boom');
+  if (target) fx.boom(target);
+  if (kind === 'sunk' || kind === 'win') {
+    setTimeout(() => play('glug'), 450);
+    fx.sink(sunkCells.map((c) => cellEl(grid, c)).filter((e): e is Element => e !== null));
+  }
+}
 
 function icon(emoji: string): HTMLSpanElement {
   return el('span', { 'aria-hidden': 'true' }, emoji);
@@ -59,7 +89,6 @@ export function renderBattle(root: HTMLElement, o: GameViewOptions): GameView {
   const turn = el('player-badge', { class: 'turn' });
   const away = el('p', { class: 'away', hidden: true });
   const live = liveRegion('result');
-  const floater = el('p', { class: 'float', 'aria-hidden': 'true', hidden: true });
 
   const toggle = el(
     'button',
@@ -91,7 +120,6 @@ export function renderBattle(root: HTMLElement, o: GameViewOptions): GameView {
     toggle,
     live.node,
     emojis,
-    floater,
   );
 
   let aim: Cell | null = null;
@@ -100,7 +128,6 @@ export function renderBattle(root: HTMLElement, o: GameViewOptions): GameView {
   /** A win's result is on screen: Round over waits. */
   let celebrating = false;
   let disposed = false;
-  let floatTimer: ReturnType<typeof setTimeout> | undefined;
   let presenceKnown = c.state.opponentHere;
   const graceTimer = setTimeout(() => {
     presenceKnown = true;
@@ -117,6 +144,7 @@ export function renderBattle(root: HTMLElement, o: GameViewOptions): GameView {
     fire.aim = cell;
     // The square's name, spaced so a voice reads "E 3" (Task 18 speaks it).
     aimText.textContent = cell === null ? t().aimHint : t().cellSpoken(cellLabel(cell));
+    if (cell !== null) say(t().cellSpoken(cellLabel(cell)));
   };
 
   /** What my shot did, from its outcome or (a landed retry) from the board. */
@@ -137,6 +165,17 @@ export function renderBattle(root: HTMLElement, o: GameViewOptions): GameView {
     }
   };
 
+  /** My shot's result: sound, burst, and the words out loud. A win adds the fanfare and confetti. */
+  const announceMine = (doc: GameDoc, cell: Cell, said: { text: string; kind: string }) => {
+    update(c.state);
+    impact(target, cell, said.kind, said.kind === 'sunk' || said.kind === 'win' ? shipCells(doc.fleets[foe], shipIndexAt(doc.fleets[foe], cell)) : []);
+    say(said.text);
+    if (said.kind === 'win') {
+      setTimeout(() => play('fanfare'), 500);
+      fxLayer().confetti();
+    }
+  };
+
   const onFire = async (cell: Cell) => {
     const start = performance.now();
     const before = c.state.doc;
@@ -144,6 +183,9 @@ export function renderBattle(root: HTMLElement, o: GameViewOptions): GameView {
     fx('fire');
     live.say(t().firing);
     update(c.state);
+    const aimed = cellEl(target, cell);
+    const fireBtn = fire.querySelector('button');
+    if (aimed && fireBtn) fxLayer().shell(fireBtn, aimed);
     let res: ApplyResult;
     try {
       res = await o.act({ type: 'fire', seat, cell });
@@ -160,6 +202,7 @@ export function renderBattle(root: HTMLElement, o: GameViewOptions): GameView {
       live.say(`${mm.cellSpoken(cellLabel(cell))}: ${said.text}`);
       won = said.kind === 'win';
       setAim(null);
+      announceMine(res.doc, cell, said);
     } else if (res.kind === 'failed') {
       // The shell fizzled: nothing landed. The aim stays for another go; the banner says Try again.
       fx('fizzle');
@@ -172,6 +215,7 @@ export function renderBattle(root: HTMLElement, o: GameViewOptions): GameView {
         fx(said.kind);
         live.say(`${mm.cellSpoken(cellLabel(cell))}: ${said.text}`);
         won = said.kind === 'win';
+        announceMine(res.doc, cell, said);
       } else {
         live.say(res.doc.phase === 'battle' && res.doc.turn !== seat ? mm.notYourTurn : mm.alreadyFired);
       }
@@ -200,22 +244,21 @@ export function renderBattle(root: HTMLElement, o: GameViewOptions): GameView {
       const cell = next.shots[foe][after - 1]!;
       const state = safeBoardCells(next.fleets[seat], next.shots[foe], true)[cell];
       const label = cellLabel(cell);
-      if (state === 'sunk') live.say(mm.theySank(mm.shipName(shipIndexAt(next.fleets[seat], cell))));
-      else if (state === 'hit') live.say(mm.theyHit(label));
-      else live.say(mm.theyMissed(label));
+      let words: string;
+      if (state === 'sunk') words = mm.theySank(mm.shipName(shipIndexAt(next.fleets[seat], cell)));
+      else if (state === 'hit') words = mm.theyHit(label);
+      else words = mm.theyMissed(label);
+      live.say(words);
       fx(`incoming-${state ?? 'miss'}`);
+      impact(own, cell, state === 'sunk' || state === 'hit' ? state : 'miss', state === 'sunk' ? shipCells(next.fleets[seat], shipIndexAt(next.fleets[seat], cell)) : []);
+      say(words);
     }
-    const r = next.reactions[foe];
-    if (r && r.seq !== prev.reactions[foe]?.seq) {
+    const reaction = newReaction(prev, next, foe);
+    if (reaction) {
       fx('react');
-      live.say(mm.reacted(foeName(), r.emoji));
-      floater.textContent = r.emoji;
-      floater.hidden = false;
-      floater.classList.remove('go');
-      void floater.offsetWidth; // restart the CSS animation
-      floater.classList.add('go');
-      clearTimeout(floatTimer);
-      floatTimer = setTimeout(() => (floater.hidden = true), FLOAT_MS);
+      live.say(mm.reacted(foeName(), reaction));
+      play('pop');
+      fxLayer().floatEmoji(reaction);
     }
   };
 
@@ -244,6 +287,8 @@ export function renderBattle(root: HTMLElement, o: GameViewOptions): GameView {
   });
   emojis.addEventListener('react', (e) => {
     const emoji = (e as CustomEvent<{ emoji: Emoji }>).detail.emoji;
+    play('pop');
+    fxLayer().floatEmoji(emoji);
     void o.act({ type: 'react', seat, emoji });
   });
   c.addEventListener('moved', onMoved);
@@ -279,6 +324,10 @@ export function renderBattle(root: HTMLElement, o: GameViewOptions): GameView {
 
   root.replaceChildren(section);
   update(c.state);
+  const opening = c.state.doc;
+  if (opening && opening.shots[0].length + opening.shots[1].length === 0) {
+    fxLayer().coinToss(`${t().turnOf(opening.seats[opening.firstTurn]?.name ?? '')}`);
+  }
   void maybeKeepSafe(section, { id: c.id, link: o.link, myName: myName(), onShared: o.onShared });
 
   return {
@@ -286,7 +335,6 @@ export function renderBattle(root: HTMLElement, o: GameViewOptions): GameView {
     busy: () => held !== null || celebrating,
     dispose: () => {
       disposed = true;
-      clearTimeout(floatTimer);
       clearTimeout(graceTimer);
       c.removeEventListener('moved', onMoved);
     },
