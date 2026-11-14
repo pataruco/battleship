@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto';
 import { IDBFactory } from 'fake-indexeddb';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { GameDoc, Profile } from '../game/types';
-import { closeDb } from './idb';
+import { closeDb, openDb } from './idb';
 import { fleetRepo, type GameRecord, gamesRepo, profileRepo } from './games-repo';
 
 const me: Profile = { playerId: 'p0', name: 'Ana', avatar: 'fish' };
@@ -106,5 +106,33 @@ describe('profileRepo and fleetRepo', () => {
     const f = [{ bow: 0, dir: 'h' as const }];
     await fleetRepo.putLast(f);
     expect(await fleetRepo.getLast()).toEqual(f);
+  });
+});
+
+describe('a closed connection', () => {
+  it('the next read and write reopen the database', async () => {
+    await gamesRepo.put(rec('a', { doc: doc(1), seq: 1 }));
+    (await openDb()).close();
+    expect((await gamesRepo.list()).map((r) => r.id)).toEqual(['a']);
+    (await openDb()).close();
+    expect(await gamesRepo.saveAck('a', doc(2, [3]), 2, 50)).toBe(true);
+    (await openDb()).close();
+    expect((await gamesRepo.get('a'))?.seq).toBe(2);
+    (await openDb()).close();
+    await gamesRepo.remove('a');
+    expect(await gamesRepo.list()).toEqual([]);
+  });
+
+  it('a versionchange from another tab closes and forgets the connection', async () => {
+    const first = await openDb();
+    let closed = false;
+    const close = first.close.bind(first);
+    first.close = () => {
+      closed = true;
+      close();
+    };
+    first.onversionchange?.(new Event('versionchange') as IDBVersionChangeEvent);
+    expect(closed).toBe(true);
+    expect(await openDb()).not.toBe(first);
   });
 });
