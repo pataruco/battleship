@@ -419,7 +419,14 @@
     border: 2px solid var(--accent);
     font-weight: bold;
   }
-  .banner[hidden] {
+  .banner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .banner[hidden],
+  .banner-action[hidden] {
     display: none;
   }
   .spinner {

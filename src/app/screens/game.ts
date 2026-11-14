@@ -85,7 +85,11 @@ export type GameScreenOptions = {
 
 /** `#/g/<id>/<secret>`: opens the controller and shows the screen its state calls for. */
 export function renderGame(app: HTMLElement, o: GameScreenOptions): () => void {
-  const banner = el('p', { class: 'banner', role: 'status', hidden: true });
+  const bannerWords = el('span', {});
+  // Update needed (a newer app, or access refused twice): one tap to reload.
+  const reload = el('button', { type: 'button', class: 'banner-action', hidden: true });
+  reload.addEventListener('click', () => window.location.reload());
+  const banner = el('div', { class: 'banner', role: 'status', hidden: true }, bannerWords, reload);
   const body = el('div', { class: 'game-body' });
   app.replaceChildren(banner, body);
 
@@ -181,7 +185,9 @@ export function renderGame(app: HTMLElement, o: GameScreenOptions): () => void {
     const kind = s.banner;
     const show = kind !== null && shown !== 'update-needed';
     banner.hidden = !show;
-    banner.textContent = show ? bannerText(kind) : '';
+    bannerWords.textContent = show ? bannerText(kind) : '';
+    reload.hidden = !show || kind !== 'update-needed';
+    reload.replaceChildren(el('span', { 'aria-hidden': 'true' }, '🔄'), ` ${t().reload}`);
   };
 
   let shownRound = 0;
