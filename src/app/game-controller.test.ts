@@ -5,7 +5,7 @@ import { createSealer } from '../crypto/seal';
 import type { Engine } from '../engine/engine';
 import { loadEngineForTests } from '../engine/load-node';
 import { FLEET_A, FLEET_B } from '../game/fixtures';
-import type { GameDoc, Profile } from '../game/types';
+import type { Emoji, GameDoc, Profile } from '../game/types';
 import { FakeBus } from '../net/fake-bus';
 import { FakeKv } from '../net/fake-kv';
 import type { KvEntryLike, KvLike } from '../net/game-store';
@@ -562,5 +562,19 @@ describe('GameController', () => {
     expect(host.conn.kvView.gets).toBe(gets + 1);
     const server = (await sealer.openJson('doc', (await kv.get(`g.${id}`))!.value)) as GameDoc;
     expect(server).toEqual(mine);
+  });
+
+  it('a failed or rejected reaction is silent: no banner', async () => {
+    const { host } = await battle();
+    kv.failNextUpdate('timeout-before-write');
+    kv.beforeNextGet(() => {
+      throw new Error('still offline');
+    });
+    expect((await host.c.act({ type: 'react', seat: 0, emoji: '🎉' })).kind).toBe('failed');
+    expect(host.c.state.banner).toBeNull();
+    // A refused reaction is dropped quietly too.
+    const refused = await host.c.act({ type: 'react', seat: 0, emoji: '🦈' as Emoji });
+    expect(refused).toMatchObject({ kind: 'rejected', error: 'bad_emoji' });
+    expect(host.c.state.banner).toBeNull();
   });
 });
