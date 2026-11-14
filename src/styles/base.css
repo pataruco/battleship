@@ -1,0 +1,16 @@
+@layer reset, tokens, layout, components, fx;
+@import './../theme/default/tokens.css' layer(tokens);
+
+@layer reset {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+  body {
+    margin: 0;
+    font-family: ui-rounded, system-ui;
+    color: var(--ink);
+    background: var(--paper);
+  }
+}

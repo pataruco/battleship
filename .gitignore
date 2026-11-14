@@ -1,1 +1,8 @@
 docs/superpowers/
+node_modules/
+dist/
+target/
+src/engine/engine.wasm
+test-results/
+playwright-report/
+.superpowers/
