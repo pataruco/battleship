@@ -1,4 +1,11 @@
-export { isIosSafari } from './screens/invite';
+/**
+ * iOS Safari, not the Home Screen app (spec §13 iOS caveat, Review 8). iPadOS Safari reports a
+ * Mac user agent, so a touch "Mac" counts as an iPad.
+ */
+export function isIosSafari(nav: Navigator = navigator): boolean {
+  const ios = /iPhone|iPad|iPod/.test(nav.userAgent) || (/Macintosh/.test(nav.userAgent) && nav.maxTouchPoints > 1);
+  return ios && (nav as Navigator & { standalone?: boolean }).standalone !== true;
+}
 
 /** Registers the service worker; production builds only (dev would cache stale modules). */
 export function registerSw(): void {
