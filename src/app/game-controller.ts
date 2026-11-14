@@ -1,5 +1,6 @@
 import { newSession } from '../crypto/link';
 import { createSealer, type Sealer } from '../crypto/seal';
+import { compareDocs } from '../game/compare';
 import { createDoc, type RulesEngine } from '../game/reducer';
 import type { Action, GameDoc, Outcome, Profile, SeatIndex } from '../game/types';
 import { GameStore, type ApplyResult, type KvLike } from '../net/game-store';
@@ -213,8 +214,7 @@ export class GameController extends EventTarget {
     if (this.s.status === 'update-needed') return { kind: 'failed', reason: 'update-needed' };
     // A double tap: the first action is still in flight.
     if (this.s.pending) return { kind: 'failed', reason: 'conflict' };
-    const current = this.s.doc;
-    if (this.s.status !== 'ready' || !current) return { kind: 'failed', reason: 'offline' };
+    if (this.s.status !== 'ready' || !this.s.doc) return { kind: 'failed', reason: 'offline' };
     if (this.conn.status !== 'online') {
       this.applyStatus();
       return { kind: 'failed', reason: 'offline' };
@@ -227,6 +227,8 @@ export class GameController extends EventTarget {
         this.set({ banner: 'offline' });
         return { kind: 'failed', reason: 'offline' };
       }
+      // Doc and revision together, after the await: a load may have adopted a newer doc meanwhile.
+      const current = this.s.doc;
       const res = await store.apply(action, { doc: current, revision: this.s.revision });
       if (this.disposed) return res;
       if (res.kind === 'ok') {
@@ -235,7 +237,8 @@ export class GameController extends EventTarget {
         void this.presence?.announceMoved(res.doc.seq);
       } else if (res.kind === 'rejected') {
         const landed = alreadyApplied(action, res.doc, current);
-        await this.adopt(res.doc, res.revision, null);
+        // Never step back behind a doc a load showed while the action was in flight.
+        if (!this.s.doc || compareDocs(res.doc, this.s.doc) >= 0) await this.adopt(res.doc, res.revision, null);
         this.set({ banner: landed ? null : 'rejected' });
       } else if (res.reason === 'update-needed') {
         this.set({ status: 'update-needed', banner: 'update-needed' });
@@ -361,6 +364,9 @@ export class GameController extends EventTarget {
       if (!this.s.doc) this.set({ status: 'unavailable' });
       return;
     }
+    // An action landed while we read: never step back behind it.
+    const shown = this.s.doc;
+    if (shown && shown !== doc && compareDocs(res.doc, shown) < 0) return;
     await this.adopt(res.doc, res.revision, res.lastMoveAt);
     if (res.wroteBack) void this.presence?.announceMoved(res.doc.seq);
   }
