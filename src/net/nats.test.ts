@@ -1,4 +1,5 @@
 import { AuthorizationError, ConnectionError, type NatsConnection, type Status, type wsconnect } from '@nats-io/nats-core';
+import type { KV } from '@nats-io/kv';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NatsConfig } from './config';
 import { Connection, type ConnStatus } from './nats';
@@ -7,10 +8,12 @@ import { Connection, type ConnStatus } from './nats';
 class FakeNc {
   closedFlag = false;
   reconnects = 0;
+  /** When set, `reconnect()` only disconnects; the test pushes the `reconnect` status. */
+  holdReconnect = false;
   private queue: Status[] = [];
   private wake: (() => void) | null = null;
-  private resolveClosed!: () => void;
-  private readonly closedP = new Promise<void>((r) => (this.resolveClosed = r));
+  private resolveClosed!: (err?: Error) => void;
+  private readonly closedP = new Promise<void | Error>((r) => (this.resolveClosed = r));
 
   push(s: Status): void {
     this.queue.push(s);
@@ -27,17 +30,21 @@ class FakeNc {
   async reconnect(): Promise<void> {
     this.reconnects++;
     this.push({ type: 'disconnect', server: 'x' });
-    this.push({ type: 'reconnect', server: 'x' });
+    if (!this.holdReconnect) this.push({ type: 'reconnect', server: 'x' });
   }
   isClosed(): boolean {
     return this.closedFlag;
   }
-  closed(): Promise<void> {
+  closed(): Promise<void | Error> {
     return this.closedP;
   }
   async close(): Promise<void> {
+    this.closeWith();
+  }
+  /** The client closing itself, as nats.js does after fatal errors. */
+  closeWith(err?: Error): void {
     this.closedFlag = true;
-    this.resolveClosed();
+    this.resolveClosed(err);
     this.wake?.();
   }
 }
@@ -65,6 +72,7 @@ let doc: FakeDoc;
 let conn: Connection;
 let statuses: ConnStatus[];
 let resumes: number;
+let opened: unknown[];
 
 const fakeConnect = (async (opts) => {
   calls.push({ at: Date.now(), opts });
@@ -80,7 +88,15 @@ beforeEach(() => {
   calls = [];
   ncs = [];
   doc = new FakeDoc();
-  conn = new Connection(cfg, { connect: fakeConnect, doc: doc as unknown as Document });
+  opened = [];
+  conn = new Connection(cfg, {
+    connect: fakeConnect,
+    openKv: async (nc) => {
+      opened.push(nc);
+      return { nc } as unknown as KV;
+    },
+    doc: doc as unknown as Document,
+  });
   statuses = [];
   resumes = 0;
   conn.addEventListener('status', (e) => statuses.push((e as CustomEvent<ConnStatus>).detail));
@@ -229,5 +245,121 @@ describe('Connection visibility lifecycle', () => {
     expect(conn.nc()).toBe(ncs[1]);
     expect(resumes).toBe(1);
     expect(conn.status).toBe('online');
+  });
+});
+
+describe('Connection fix round 1', () => {
+  it('hidden while offline: after 2 min the retry loop stops, nothing attaches until visible', async () => {
+    outcomes = Array.from({ length: 10 }, offline);
+    void conn.start();
+    doc.set(true);
+    await vi.advanceTimersByTimeAsync(600_000);
+    const dialled = calls.length;
+    expect(dialled).toBeLessThanOrEqual(8); // last dial at 120 s at the latest
+    expect(ncs).toHaveLength(0);
+    expect(conn.nc()).toBeNull();
+    expect(conn.status).toBe('offline');
+    outcomes = [];
+    doc.set(false);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(calls.length).toBe(dialled + 1);
+    expect(conn.status).toBe('online');
+    expect(resumes).toBe(1);
+  });
+
+  it('a dial that succeeds after the hidden close is closed, not attached', async () => {
+    let finish!: (nc: NatsConnection) => void;
+    const late = new FakeNc();
+    conn = new Connection(cfg, {
+      connect: (async () => new Promise<NatsConnection>((r) => (finish = r))) as typeof wsconnect,
+      doc: doc as unknown as Document,
+    });
+    void conn.start();
+    doc.set(true);
+    await vi.advanceTimersByTimeAsync(120_000);
+    finish(late as unknown as NatsConnection);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(late.closedFlag).toBe(true);
+    expect(conn.nc()).toBeNull();
+  });
+
+  it('close() while offline rejects pending whenOnline and kv waiters', async () => {
+    outcomes = [offline()];
+    void conn.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(conn.status).toBe('offline');
+    const online = conn.whenOnline();
+    const kv = conn.kv();
+    await conn.close();
+    await expect(online).rejects.toThrow(/closed/);
+    await expect(kv).rejects.toThrow(/closed/);
+  });
+
+  it('close() mid-backoff stops the loop', async () => {
+    outcomes = [offline()];
+    const started = conn.start();
+    await vi.advanceTimersByTimeAsync(0);
+    await conn.close();
+    await vi.advanceTimersByTimeAsync(100_000);
+    await started;
+    expect(calls).toHaveLength(1);
+    expect(conn.status).toBe('offline');
+  });
+
+  it('client closes itself with an auth error → auth-failed', async () => {
+    await conn.start();
+    ncs[0]!.closeWith(new AuthorizationError('Authorization Violation'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(conn.status).toBe('auth-failed');
+    expect(calls).toHaveLength(1);
+  });
+
+  it('client closes itself for another reason → connects again', async () => {
+    await conn.start();
+    ncs[0]!.closeWith(new Error('stale connection'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(calls).toHaveLength(2);
+    expect(conn.nc()).toBe(ncs[1]);
+    expect(conn.status).toBe('online');
+  });
+
+  it('two long hides in quick succession → one reconnect, one resume', async () => {
+    await conn.start();
+    ncs[0]!.holdReconnect = true;
+    doc.set(true);
+    await vi.advanceTimersByTimeAsync(6_000);
+    doc.set(false);
+    await vi.advanceTimersByTimeAsync(0);
+    doc.set(true);
+    await vi.advanceTimersByTimeAsync(6_000);
+    doc.set(false);
+    await vi.advanceTimersByTimeAsync(0);
+    ncs[0]!.push({ type: 'reconnect', server: 'x' });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(ncs[0]!.reconnects).toBe(1);
+    expect(resumes).toBe(1);
+  });
+
+  it('start() while already hidden arms the 2-minute close', async () => {
+    doc.hidden = true;
+    await conn.start();
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(ncs[0]!.closedFlag).toBe(true);
+    expect(conn.nc()).toBeNull();
+  });
+
+  it('kv() is memoised per connection and reopened on a new one', async () => {
+    await conn.start();
+    const k1 = conn.kv();
+    expect(conn.kv()).toBe(k1);
+    await k1;
+    doc.set(true);
+    await vi.advanceTimersByTimeAsync(120_000);
+    doc.set(false);
+    await vi.advanceTimersByTimeAsync(0);
+    const k2 = conn.kv();
+    expect(k2).not.toBe(k1);
+    await k2;
+    expect(opened).toEqual([ncs[0], ncs[1]]);
   });
 });
