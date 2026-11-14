@@ -1,14 +1,26 @@
 //! QR encoder for invite links (ECC medium, no ECC boost).
 
-use qrcodegen::{QrCode, QrCodeEcc};
+use qrcodegen::{QrCode, QrCodeEcc, QrSegment, Version};
+
+/// Medium ECC, boost off (`encode_text` would silently boost to H when it fits).
+fn build(text: &[u8]) -> Option<QrCode> {
+    let text = core::str::from_utf8(text).ok()?;
+    let segs = QrSegment::make_segments(text);
+    QrCode::encode_segments_advanced(
+        &segs,
+        QrCodeEcc::Medium,
+        Version::MIN,
+        Version::MAX,
+        None,
+        false,
+    )
+    .ok()
+}
 
 /// Encode `text`; write `side*side` bytes (1 dark, 0 light, row-major) to
 /// `out` and return `side`. -1 not encodable, -2 `out` too small.
 pub fn qr_encode_into(text: &[u8], out: &mut [u8]) -> i32 {
-    let Ok(text) = core::str::from_utf8(text) else {
-        return -1;
-    };
-    let Ok(qr) = QrCode::encode_text(text, QrCodeEcc::Medium) else {
+    let Some(qr) = build(text) else {
         return -1;
     };
     let side = qr.size();
@@ -56,6 +68,12 @@ mod tests {
         assert_eq!(grids.len(), 1);
         let (_, text) = grids[0].decode().expect("decodes");
         assert_eq!(text, URL);
+    }
+
+    #[test]
+    fn ecc_level_is_not_boosted() {
+        let qr = build(b"hi").expect("encodes");
+        assert_eq!(qr.error_correction_level(), QrCodeEcc::Medium);
     }
 
     #[test]
