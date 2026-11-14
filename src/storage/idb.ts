@@ -19,13 +19,45 @@ export function openDb(name = 'bship'): Promise<IDBDatabase> {
         db.createObjectStore('games', { keyPath: 'id' });
         db.createObjectStore('fleets');
       };
-      open.onsuccess = () => resolve(open.result);
+      open.onsuccess = () => {
+        const db = open.result;
+        // The browser may drop the connection (storage pressure) or another tab may upgrade it:
+        // forget it so the next call reopens.
+        db.onclose = () => forget(name, p!);
+        db.onversionchange = () => {
+          db.close();
+          forget(name, p!);
+        };
+        resolve(db);
+      };
       open.onerror = () => reject(open.error);
     });
     p.catch(() => dbs.delete(name));
     dbs.set(name, p);
   }
   return p;
+}
+
+function forget(name: string, p: Promise<IDBDatabase>): void {
+  if (dbs.get(name) === p) dbs.delete(name);
+}
+
+/** A closed or broken connection: worth one retry on a fresh one. */
+function isStale(e: unknown): boolean {
+  const n = (e as { name?: unknown } | null)?.name;
+  return n === 'InvalidStateError' || n === 'UnknownError';
+}
+
+/** Runs `fn` on the cached connection; if that connection went stale, reopens once and retries. */
+export async function withDb<T>(fn: (db: IDBDatabase) => Promise<T>, name = 'bship'): Promise<T> {
+  const p = openDb(name);
+  try {
+    return await fn(await p);
+  } catch (e) {
+    if (!isStale(e)) throw e;
+    forget(name, p);
+    return fn(await openDb(name));
+  }
 }
 
 /** Test-only: closes every cached connection and forgets them. */
