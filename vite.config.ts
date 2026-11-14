@@ -39,7 +39,11 @@ export default defineConfig(({ mode }) => {
       // The sprite and wasm are fetched by URL; a data: URL would break under connect-src 'self'.
       assetsInlineLimit: 0,
       rollupOptions: {
-        treeshake: { moduleSideEffects: (id: string) => !/@nats-io/.test(id) },
+        // Matches npm's layout (node_modules/@nats-io/kv) and pnpm's (node_modules/@jsr/nats-io__kv).
+        treeshake: {
+          moduleSideEffects: (id: string) =>
+            !/[\\/]node_modules[\\/](?:@nats-io[\\/]|@jsr[\\/]nats-io__(?:nats-core|kv|jetstream)[\\/])/.test(id),
+        },
         output: { codeSplitting: false },
       },
     },
