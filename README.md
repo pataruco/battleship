@@ -8,7 +8,7 @@ It is an installable web app (PWA). It plays in Safari on iPad and iPhone, as a 
 
 - **The web platform, with no UI framework.** TypeScript, Custom Elements and Web APIs.
 - **A Rust game engine.** It holds the rules and is compiled to WebAssembly.
-- **NATS is the only backend.** Each game lives in a NATS key-value bucket (JetStream).
+- **NATS is the only backend.** NATS is a messaging server. Each game lives in one of its key-value buckets (JetStream).
 - **Sealed game state.** Each game is encrypted with AES-GCM, and the key only lives in the invite link.
 - **GitHub Pages** hosts the site.
 
@@ -16,13 +16,15 @@ It is an installable web app (PWA). It plays in Safari on iPad and iPhone, as a 
 
 ### Before you start
 
+The tasks need bash. They are written for macOS and Linux.
+
 Install these tools:
 
 | Tool | The project uses it to |
 |---|---|
 | [Node.js](https://nodejs.org/) 24 or newer | run Vite, Vitest and Playwright |
 | [pnpm](https://pnpm.io/installation) 12 | install the JavaScript packages |
-| [just](https://just.systems/) | run every task on this page |
+| [just](https://just.systems/) 1.27 or newer | run every task on this page |
 | [Rust](https://rustup.rs/) 1.88 or newer | compile the game engine to WebAssembly |
 | [Docker](https://docs.docker.com/get-started/get-docker/), with Compose | run NATS on your computer |
 | [`nats` CLI](https://github.com/nats-io/natscli) | wait for NATS to start, then create the bucket |
@@ -68,14 +70,16 @@ It marks each tool `ok` or `MISSING`. When nothing is missing, the last line is 
 
    This builds the game engine, then prints `Local: http://localhost:5173/battleship/`.
 
-4. Open <http://localhost:5173/battleship/> in a browser. Select **Tap to start**, then choose a picture, type a name and select **Save**.
+4. Open <http://localhost:5173/battleship/> in a browser. Select **Tap to start**, then choose a picture, type a name and select **Save**. You then see **New game**.
 
 ### Play both sides
 
 Each browser profile is one player, so you need two to play a game:
 
-1. In the first window, select **New game**, then **Copy link**.
-2. Open the link in a private window, or in another browser, and select **Join!**
+1. In the first window, select **New game**. The game shows an invite with a QR code. Select **Copy link**.
+2. Open the link in a private window, or in another browser. Select **Tap to start** and choose a picture and a name, as before. Then select **Join!**
+
+Both windows then show **Place your ships**.
 
 A second tab in the same window is still the first player.
 
@@ -88,7 +92,9 @@ Two pages help while you work:
 
 ### Stop
 
-Press Ctrl+C in the terminal that runs `just dev`. Then stop NATS:
+Press Ctrl+C in the terminal that runs `just dev`. `just` prints an error line that says the recipe was terminated by signal 2. That is expected.
+
+Then stop NATS:
 
 ```sh
 just nats-down
@@ -105,7 +111,7 @@ Your local games stay in a Docker volume, so they are still there after the next
 | `VITE_NATS_URL` | `ws://localhost:9222` | Where the game finds NATS. A path such as `/nats` means "the same address as the page": the dev server passes `/nats` on to local NATS. |
 | `VITE_NATS_AUTH` | `userpass` | How the game signs in: `none`, `userpass` or `creds`. |
 | `VITE_NATS_USER`, `VITE_NATS_PASS` | `browser`, `browser-dev` | The name and password for `userpass`. |
-| `VITE_NATS_CREDS` | not set | The text of a creds file, for `creds`. Only production uses it. |
+| `VITE_NATS_CREDS` | not set | For `creds`: the text of a creds file, which holds a user's sign-in keys. Only production uses it. |
 | `VITE_KV_BUCKET` | `bship_games` | The bucket that holds the games. |
 
 Vite reads `.env` when `just dev` or `just build` starts. A value set in your shell wins over the one in `.env`.
@@ -117,12 +123,14 @@ Production does not use `.env`. The deploy workflow sets these values from GitHu
 | What you see | What to do |
 |---|---|
 | `MISSING` in `just doctor` | Install that tool, then run `just doctor` again. |
+| A Rust error that mentions `wasm32-unknown-unknown` | The WebAssembly target is missing. Run `rustup target add wasm32-unknown-unknown`. |
 | `Cannot connect to the Docker daemon` | Start Docker, then run `just nats-up` again. |
-| `port is already allocated` | Another program is using port 4222, 9222 or 8222. Stop it, then run `just nats-up` again. |
+| `port is already allocated` or `address already in use` | Another program or container is using port 4222, 9222 or 8222. Stop it, then run `just nats-up` again. |
 | `NATS did not become ready` | NATS did not start. Run `docker logs nats-nats-1` to see why. If the log says `is a directory`, Docker cannot see the repo's folder. Colima and Docker Desktop only share some folders: move the repo under your home folder, or share its folder with Docker. |
 | `Local NATS is not up, or has no bship_games bucket` | Run `just nats-up`. |
 | **New game** shows "You're offline. Your game is saved" | The game cannot reach NATS. Run `just nats-up`, then open [`#/debug`](http://localhost:5173/battleship/#/debug) to check the server and bucket. |
-| "Could not start the game" | The game engine is missing. Run `just wasm`, then reload the page. `just dev` builds it for you. |
+| `Port 5173 is in use, trying another one...` | Vite picked the next free port. Open the address it prints after `Local:`. |
+| An error over the page: `Failed to resolve import "./engine.wasm?url"` | The game engine is not built. Run `just wasm`, then reload the page. `just dev` builds it for you, so this only happens if you start Vite another way. |
 | `Executable doesn't exist` from Playwright | Run `just playwright-install`. |
 
 ## Run the tests
@@ -141,7 +149,7 @@ To run part of a suite, add the tool's own options. For example, `just test -t "
 
 ## Try it on an iPhone or iPad
 
-- **In the iOS Simulator** (part of [Xcode](https://developer.apple.com/xcode/)): the Simulator shares your Mac's network. Run `just dev`, then open `http://localhost:5173/battleship/` in the Simulator's Safari.
+- **In the iOS Simulator** (part of [Xcode](https://developer.apple.com/xcode/)): the Simulator shares your Mac's network. [Start the game](#start-the-game), then open `http://localhost:5173/battleship/` in the Simulator's Safari.
 - **On a real device:** use the deployed site, and work through the [real-device checklist](infra/nats/README.md#real-device-checklist).
 
 A real device cannot use the dev server over your network. The game needs the browser's crypto features (`crypto.subtle`), and Safari only provides them over https or on `localhost`.

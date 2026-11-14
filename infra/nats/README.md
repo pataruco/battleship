@@ -1,6 +1,6 @@
 # NATS
 
-NATS is the game's only backend. It stores each game in a key-value bucket, and it passes presence messages between the two players so each can see when the other is there.
+NATS is the game's only backend. It stores each game in a key-value bucket, which is a named store of keys and values. It also passes presence messages between the two players, so each can see when the other is there.
 
 On your computer, NATS runs in Docker. In production it is Synadia Cloud, on the free Personal plan.
 
@@ -35,7 +35,7 @@ It needs the [`nats` CLI](https://github.com/nats-io/natscli) and `jq`. It is sa
 
 | Port | What uses it |
 |---|---|
-| 4222 | The `nats` CLI: `wait.sh`, `provision.sh` and your own commands |
+| 4222 | The `nats` CLI (`wait.sh`, `provision.sh` and your own commands), and the test that checks the browser user is refused over plain TCP |
 | 9222 | The game and the tests, over WebSocket |
 | 8222 | Nothing answers. Docker publishes the port for NATS monitoring, but the local config leaves monitoring off |
 
@@ -52,9 +52,7 @@ These passwords only work on your computer.
 
 ### What `provision.sh` does
 
-A bucket is a named store of keys and values. NATS keeps it in a stream called `KV_bship_games`.
-
-`provision.sh` creates the `bship_games` bucket with these settings:
+`provision.sh` creates the `bship_games` bucket with these settings. NATS keeps the bucket in a stream called `KV_bship_games`.
 
 | Setting | Value |
 |---|---|
@@ -220,7 +218,9 @@ nats --context synadia-bship-admin consumer rm KV_bship_games <name> -f
 
 ### Over the data allowance
 
-Synadia drops every connection until the next billing cycle. [Rotate the browser user](#rotate-the-browser-user) so the abuser is cut off. Then wait, or upgrade the plan.
+Use this when the 10 GiB data allowance is used up. Synadia then drops every connection until the next billing cycle.
+
+[Rotate the browser user](#rotate-the-browser-user) so the abuser is cut off. Then wait, or upgrade the plan.
 
 ## Real-device checklist
 
