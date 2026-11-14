@@ -6,6 +6,8 @@ export type BadgeInfo = {
   here: boolean | null;
   /** The line under the name ("Your turn!", "Sam is ready"). */
   text: string;
+  /** Words for the dot, for assistive tech ("Sam is here"). */
+  dotLabel?: string;
 };
 
 /** `<player-badge>`: avatar, name, an optional presence dot and a status line. */
@@ -26,9 +28,9 @@ export class PlayerBadge extends HTMLElement {
   }
 
   #render(): void {
-    const { player, here, text } = this.#info;
+    const { player, here, text, dotLabel = '' } = this.#info;
     // Rebuild only when something changed, so a screen can set this on every state change.
-    const key = JSON.stringify([player, here, text]);
+    const key = JSON.stringify([player, here, text, dotLabel]);
     if (key === this.#key && this.childElementCount) return;
     this.#key = key;
     const kids: Node[] = [];
@@ -44,6 +46,12 @@ export class PlayerBadge extends HTMLElement {
         dot.className = `dot ${here ? 'here' : 'away'}`;
         dot.setAttribute('aria-hidden', 'true');
         name.append(' ', dot);
+        if (dotLabel) {
+          const words = document.createElement('span');
+          words.className = 'sr';
+          words.textContent = ` ${dotLabel}`;
+          name.append(words);
+        }
       }
       words.append(name);
     }

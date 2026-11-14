@@ -9,6 +9,20 @@ const COOLDOWN_MS = 3_000;
 export class EmojiBar extends HTMLElement {
   #timer: ReturnType<typeof setTimeout> | undefined;
   #buttons: HTMLButtonElement[] = [];
+  #nameOf: (emoji: Emoji) => string = (e) => e;
+
+  /** Spoken name per emoji (i18n), set as each button's aria-label. */
+  get nameOf(): (emoji: Emoji) => string {
+    return this.#nameOf;
+  }
+  set nameOf(fn: (emoji: Emoji) => string) {
+    this.#nameOf = fn;
+    this.#label();
+  }
+
+  #label(): void {
+    this.#buttons.forEach((b, i) => b.setAttribute('aria-label', this.#nameOf(EMOJI[i]!)));
+  }
 
   connectedCallback(): void {
     if (this.#buttons.length) return;
@@ -23,6 +37,7 @@ export class EmojiBar extends HTMLElement {
       this.#buttons.push(b);
     }
     this.replaceChildren(...this.#buttons);
+    this.#label();
   }
 
   disconnectedCallback(): void {

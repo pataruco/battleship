@@ -205,8 +205,8 @@ export class GameController extends EventTarget {
 
   /** The link was shared or copied from this device (spec §13 nudge 3). */
   async markShared(): Promise<void> {
-    const rec = await gamesRepo.get(this.id).catch(() => null);
-    if (rec && !rec.shared) await gamesRepo.put({ ...rec, shared: true }).catch(() => {});
+    // One transaction: never puts back a cached doc older than one saved meanwhile.
+    await gamesRepo.patch(this.id, { shared: true }).catch(() => {});
   }
 
   async act(action: Action): Promise<ApplyResult> {

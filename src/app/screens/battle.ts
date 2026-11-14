@@ -15,6 +15,16 @@ import { maybeKeepSafe, shareLink } from './keep-safe';
 /** Shell flight: FIRE to result is never shorter than this. */
 export const FLIGHT_MS = 600;
 const FLOAT_MS = 2_000;
+/** A winning shot's result stays on screen this long before Round over (shorter under reduced motion). */
+export const WIN_HOLD_MS = 1_800;
+export const WIN_HOLD_REDUCED_MS = 600;
+/** Until presence has had a chance to hear the opponent, show no away line or dot. */
+export const PRESENCE_GRACE_MS = 5_000;
+
+function winHoldMs(): number {
+  const reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  return reduced ? WIN_HOLD_REDUCED_MS : WIN_HOLD_MS;
+}
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, Math.max(0, ms)));
 
@@ -41,6 +51,8 @@ export function renderBattle(root: HTMLElement, o: GameViewOptions): GameView {
   const target = el('sea-grid', { class: 'target' });
   const own = el('sea-grid', { class: 'own' });
   own.mode = 'own';
+  target.label = m.theirSea;
+  own.label = m.mySea;
   const fire = el('fire-button', {});
   fire.label = m.fire;
   const aimText = el('p', { class: 'aim-label' }, m.aimHint);
@@ -63,6 +75,7 @@ export function renderBattle(root: HTMLElement, o: GameViewOptions): GameView {
     el('div', { class: 'menu-items' }, shareAgain, el('a', { class: 'big', href: '#/' }, icon('🏠'), ` ${m.home}`)),
   );
   const emojis = el('emoji-bar', { 'data-label': m.react });
+  emojis.nameOf = (e) => t().emojiName(e);
 
   const section = el(
     'section',
@@ -84,8 +97,15 @@ export function renderBattle(root: HTMLElement, o: GameViewOptions): GameView {
   let aim: Cell | null = null;
   /** The doc shown on the target board while a shell is in flight. */
   let held: GameDoc | null = null;
+  /** A win's result is on screen: Round over waits. */
+  let celebrating = false;
   let disposed = false;
   let floatTimer: ReturnType<typeof setTimeout> | undefined;
+  let presenceKnown = c.state.opponentHere;
+  const graceTimer = setTimeout(() => {
+    presenceKnown = true;
+    update(c.state);
+  }, PRESENCE_GRACE_MS);
 
   const fx = (name: string) => (section.dataset.fx = name);
   const myName = () => c.state.doc?.seats[seat]?.name ?? '';
@@ -133,29 +153,41 @@ export function renderBattle(root: HTMLElement, o: GameViewOptions): GameView {
     }
     if (disposed) return;
     const mm = t();
+    let won = false;
     if (res.kind === 'ok') {
       const said = mineSaid(res.doc, cell, res.outcome);
       fx(said.kind);
       live.say(`${mm.cellSpoken(cellLabel(cell))}: ${said.text}`);
+      won = said.kind === 'win';
       setAim(null);
     } else if (res.kind === 'failed') {
       // The shell fizzled: nothing landed. The aim stays for another go; the banner says Try again.
       fx('fizzle');
       live.say(mm.fizzle);
     } else {
-      if (res.doc.round === before?.round && res.doc.shots[seat].includes(cell)) {
+      const wasUnfired = before !== null && !before.shots[seat].includes(cell);
+      if (wasUnfired && res.doc.round === before.round && res.doc.shots[seat].includes(cell)) {
         // Our earlier try landed after all (a lost reply): show its result softly.
-        const said = mineSaid(res.doc, cell);
+        const said = mineSaid(res.doc, cell, res.doc.phase === 'over' && res.doc.winner === seat ? { kind: 'win', ship: shipIndexAt(res.doc.fleets[foe], cell) } : undefined);
         fx(said.kind);
         live.say(`${mm.cellSpoken(cellLabel(cell))}: ${said.text}`);
+        won = said.kind === 'win';
       } else {
         live.say(res.doc.phase === 'battle' && res.doc.turn !== seat ? mm.notYourTurn : mm.alreadyFired);
       }
       setAim(null);
     }
     fire.reset();
+    if (won) {
+      // Let the kid see and hear "You sank… You won!" before Round over takes the screen.
+      celebrating = true;
+      update(c.state);
+      await sleep(winHoldMs());
+      celebrating = false;
+      if (disposed) return;
+    }
     update(c.state);
-    o.repaint(); // a win moves on to Round over now that the result has shown
+    o.repaint();
   };
 
   const onMoved = (e: Event) => {
@@ -224,6 +256,7 @@ export function renderBattle(root: HTMLElement, o: GameViewOptions): GameView {
     target.cells = safeBoardCells(doc.fleets[foe], doc.shots[seat], false);
     own.cells = safeBoardCells(now.fleets[seat], now.shots[foe], true);
     const myTurn = now.phase === 'battle' && now.turn === seat;
+    if (s.opponentHere) presenceKnown = true;
     const flying = held !== null;
     target.disabled = !myTurn || s.pending || flying;
     fire.blocked = !myTurn || s.pending || flying;
@@ -232,8 +265,13 @@ export function renderBattle(root: HTMLElement, o: GameViewOptions): GameView {
     turn.info =
       myTurn || flying
         ? { player: now.seats[seat], here: null, text: mm.yourTurn }
-        : { player: other, here: s.opponentHere, text: `${mm.turnOf(other?.name ?? '')}…` };
-    away.hidden = s.opponentHere || !other;
+        : {
+            player: other,
+            here: presenceKnown ? s.opponentHere : null,
+            text: `${mm.turnOf(other?.name ?? '')}…`,
+            dotLabel: other ? (s.opponentHere ? mm.here(other.name) : mm.away(other.name)) : '',
+          };
+    away.hidden = !presenceKnown || s.opponentHere || !other;
     away.textContent = other ? mm.away(other.name) : '';
     // A square that has been fired at can't stay aimed (a re-read, or another device of mine).
     if (aim !== null && !flying && doc.shots[seat].includes(aim)) setAim(null);
@@ -245,10 +283,11 @@ export function renderBattle(root: HTMLElement, o: GameViewOptions): GameView {
 
   return {
     update,
-    busy: () => held !== null,
+    busy: () => held !== null || celebrating,
     dispose: () => {
       disposed = true;
       clearTimeout(floatTimer);
+      clearTimeout(graceTimer);
       c.removeEventListener('moved', onMoved);
     },
   };

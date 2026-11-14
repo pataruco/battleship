@@ -33,6 +33,7 @@ export function renderRoundOver(root: HTMLElement, o: GameViewOptions): GameView
     // Where their ships were hiding: the winner's fleet against my shots, revealed.
     const reveal = el('sea-grid', { class: 'reveal' });
     reveal.mode = 'own';
+    reveal.label = m.revealHint;
     reveal.cells = safeBoardCells(doc.fleets[winner], doc.shots[seat], true);
     kids.push(el('h2', {}, m.revealHint), reveal);
   }
