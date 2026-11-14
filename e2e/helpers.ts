@@ -1,8 +1,9 @@
+import { expect, type Browser, type BrowserContext, type Page } from '@playwright/test';
 import { wsconnect } from '@nats-io/nats-core';
 import { Kvm } from '@nats-io/kv';
 import { createSealer } from '../src/crypto/seal';
 import type { Cell, GameDoc, SeatIndex } from '../src/game/types';
-import { FLEET_LENGTHS } from '../src/game/types';
+import { cellLabel, FLEET_LENGTHS } from '../src/game/types';
 
 const NATS_URL = 'ws://localhost:9222';
 const BUCKET = 'bship_games';
@@ -47,4 +48,32 @@ export function pickTarget(doc: GameDoc, from: SeatIndex, hit: boolean): Cell {
     if (!fired.has(cell) && ships.has(cell) === hit) return cell;
   }
   throw new Error('no target left');
+}
+
+/** Cold open: tap to start, then fill in the one-time profile. */
+export async function startAndProfile(page: Page, name: string): Promise<void> {
+  await page.getByRole('button', { name: /Tap to start/ }).click();
+  await page.getByLabel('Your name').fill(name);
+  await page.getByRole('button', { name: /Save/ }).click();
+}
+
+export async function newPlayer(browser: Browser): Promise<{ context: BrowserContext; page: Page }> {
+  const context = await browser.newContext({ reducedMotion: 'reduce' });
+  return { context, page: await context.newPage() };
+}
+
+export async function shuffleAndReady(page: Page): Promise<void> {
+  await page.getByRole('button', { name: /Shuffle/ }).click();
+  const ready = page.getByRole('button', { name: /Ready!/ });
+  await expect(ready).toBeEnabled();
+  await ready.click();
+}
+
+/** `seat` aims in "Their sea" and fires; resolves once the doc has the shot. */
+export async function fireAt(page: Page, reader: DocReader, doc: GameDoc, seat: SeatIndex, hit: boolean): Promise<void> {
+  const cell = pickTarget(doc, seat, hit);
+  const shots = doc.shots[seat].length;
+  await page.locator('.their').getByRole('gridcell', { name: `${cellLabel(cell)}, water`, exact: true }).click();
+  await page.getByRole('button', { name: /FIRE!/ }).click();
+  await expect.poll(async () => (await reader.read())?.shots[seat].length, { intervals: [200] }).toBe(shots + 1);
 }

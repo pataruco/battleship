@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { headers, type NatsConnection } from '@nats-io/nats-core';
 import { Kvm, type KV } from '@nats-io/kv';
 import { jetstreamManager } from '@nats-io/jetstream';
-import { adminConnection, browserConnection } from './helpers';
+import { adminConnection, browserConnection, PROBE_URL } from './helpers';
 
 const enc = new TextEncoder();
 const dec = new TextDecoder();
@@ -11,12 +11,13 @@ const key = () => `g.${crypto.randomUUID()}`;
 
 describe('browser user permissions', () => {
   let nc: NatsConnection;
-  let admin: NatsConnection;
+  let admin: NatsConnection | null = null;
   let kv: KV;
 
   beforeAll(async () => {
     nc = await browserConnection();
-    admin = await adminConnection();
+    // No local admin user exists on a probed server; the stream-absence check is skipped there.
+    if (!PROBE_URL) admin = await adminConnection();
     kv = await new Kvm(nc).open('bship_games', { allow_direct: true });
   });
 
@@ -67,11 +68,14 @@ describe('browser user permissions', () => {
         timeout: 3000,
       }),
     ).rejects.toThrow(/permissions violation/i);
-    const jsm = await jetstreamManager(admin);
-    await expect(jsm.streams.info('X')).rejects.toThrow(/not found/i);
+    if (admin) {
+      const jsm = await jetstreamManager(admin);
+      await expect(jsm.streams.info('X')).rejects.toThrow(/not found/i);
+    }
   });
 
-  it('is refused over plain TCP (websocket-only user)', async () => {
+  // Synadia's connection-type limit is unconfirmed, so this local-only check is skipped for a probe.
+  it.skipIf(!!PROBE_URL)('is refused over plain TCP (websocket-only user)', async () => {
     const reply = await new Promise<string>((resolve, reject) => {
       const sock = connect(4222, 'localhost');
       let buf = '';
