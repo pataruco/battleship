@@ -27,4 +27,20 @@ describe('prefs', () => {
     const s = memStore(JSON.stringify({ lang: 'fr', sound: 'x', voice: false }));
     expect(getPrefs(s)).toEqual({ lang: null, sound: true, voice: false });
   });
+  it('never throws when storage is blocked or full', () => {
+    const blocked = {
+      getItem: () => {
+        throw new Error('SecurityError');
+      },
+      setItem: () => {
+        throw new Error('QuotaExceededError');
+      },
+    };
+    expect(getPrefs(blocked)).toEqual({ lang: null, sound: true, voice: true });
+    expect(() => setPrefs({ sound: false }, blocked)).not.toThrow();
+  });
+  it('never throws when localStorage is missing', () => {
+    expect(getPrefs()).toEqual({ lang: null, sound: true, voice: true });
+    expect(() => setPrefs({ sound: false })).not.toThrow();
+  });
 });

@@ -4,9 +4,10 @@ type PrefsStore = Pick<Storage, 'getItem' | 'setItem'>;
 const KEY = 'bship.prefs';
 const DEFAULTS: Prefs = { lang: null, sound: true, voice: true };
 
-export function getPrefs(storage: PrefsStore = globalThis.localStorage): Prefs {
+/** Never throws: a blocked `localStorage` or a full quota just means defaults / unsaved prefs. */
+export function getPrefs(storage?: PrefsStore): Prefs {
   try {
-    const raw = JSON.parse(storage.getItem(KEY) ?? 'null') as Record<string, unknown> | null;
+    const raw = JSON.parse((storage ?? globalThis.localStorage).getItem(KEY) ?? 'null') as Record<string, unknown> | null;
     if (!raw || typeof raw !== 'object') return { ...DEFAULTS };
     return {
       lang: raw.lang === 'en' || raw.lang === 'es' ? raw.lang : DEFAULTS.lang,
@@ -18,6 +19,10 @@ export function getPrefs(storage: PrefsStore = globalThis.localStorage): Prefs {
   }
 }
 
-export function setPrefs(patch: Partial<Prefs>, storage: PrefsStore = globalThis.localStorage): void {
-  storage.setItem(KEY, JSON.stringify({ ...getPrefs(storage), ...patch }));
+export function setPrefs(patch: Partial<Prefs>, storage?: PrefsStore): void {
+  try {
+    (storage ?? globalThis.localStorage).setItem(KEY, JSON.stringify({ ...getPrefs(storage), ...patch }));
+  } catch {
+    // Boot-critical: ignore a blocked store or quota error.
+  }
 }

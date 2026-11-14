@@ -29,3 +29,15 @@ export function startRouter(render: (r: Route) => void): void {
   window.addEventListener('hashchange', run);
   run();
 }
+
+/**
+ * Accepts a pasted full link or a bare `#/g/...` / `/g/...` and returns the game hash
+ * (`#/g/<id>/<secret>`), or null when it is not a valid game link.
+ */
+export function linkToHash(text: string): string | null {
+  const trimmed = text.trim();
+  const i = trimmed.indexOf('#');
+  const hash = i >= 0 ? trimmed.slice(i) : trimmed.startsWith('/g/') ? `#${trimmed}` : '';
+  const route = parseRoute(hash);
+  return route.name === 'game' ? `#/g/${route.id}/${route.secret}` : null;
+}
