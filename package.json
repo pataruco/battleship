@@ -1,14 +1,12 @@
 {
   "name": "battleship",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "directories": {
-    "doc": "docs"
-  },
+  "description": "Kids two-player sea-battle PWA",
   "scripts": {
-    "test": "vitest run --project unit",
+    "test": "npm run wasm && vitest run --project unit",
     "dev": "vite",
+    "wasm": "node scripts/build-wasm.mjs",
+    "test:rust": "cargo test --manifest-path engine/Cargo.toml",
     "build": "npm run wasm && tsc --noEmit && vite build",
     "preview": "vite preview --port 4173",
     "test:int": "vitest run --project integration",
@@ -16,9 +14,10 @@
   },
   "keywords": [],
   "type": "module",
-  "private": "true",
+  "private": true,
   "devDependencies": {
     "@playwright/test": "^1.65.1",
+    "@types/node": "^26.6.6",
     "fake-indexeddb": "^6.2.8",
     "happy-dom": "^21.0.4",
     "lightningcss": "^1.33.0",
