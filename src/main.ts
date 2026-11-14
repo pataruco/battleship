@@ -8,6 +8,7 @@ import { renderProfile } from './app/screens/profile';
 import { renderStart } from './app/screens/start';
 import { el } from './app/el';
 import { logError } from './app/errors';
+import { captureInstallPrompt, registerSw } from './app/pwa';
 import { session } from './app/session';
 import { loadEngine, setEngine } from './engine/engine';
 import { initLang, t } from './i18n';
@@ -76,6 +77,8 @@ async function main(): Promise<void> {
   window.addEventListener('error', (e) => logError(e.error ?? e.message));
   window.addEventListener('unhandledrejection', (e) => logError(e.reason));
   initLang();
+  captureInstallPrompt();
+  registerSw();
   try {
     setEngine(await loadEngine());
     await loadArt();

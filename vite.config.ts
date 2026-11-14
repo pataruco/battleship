@@ -1,5 +1,6 @@
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 import { buildCsp } from './src/build/csp';
+import { makeBuildId, swPlugin } from './src/build/sw-plugin';
 
 // Safari 16.4 in Lightning CSS's numeric encoding: (major << 16) | (minor << 8).
 const SAFARI_16_4 = (16 << 16) | (4 << 8);
@@ -23,9 +24,11 @@ function cspPlugin(natsUrl: string): Plugin {
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), 'VITE_');
+  const buildId = makeBuildId();
   return {
     base: '/battleship/',
-    plugins: [cspPlugin(env.VITE_NATS_URL ?? '')],
+    define: { 'import.meta.env.VITE_BUILD_ID': JSON.stringify(buildId) },
+    plugins: [cspPlugin(env.VITE_NATS_URL ?? ''), swPlugin(buildId)],
     css: {
       transformer: 'lightningcss',
       lightningcss: { targets: { safari: SAFARI_16_4 } },

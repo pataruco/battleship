@@ -5,6 +5,7 @@ import { Connection, type ConnStatus } from '../net/nats';
 import { natsConfig } from '../net/config';
 import type { Profile } from '../game/types';
 import { gamesRepo, profileRepo, type GameRecord } from '../storage/games-repo';
+import { requestPersist } from './pwa';
 import { createGame, GameController } from './game-controller';
 import { Store } from './store';
 
@@ -27,8 +28,10 @@ export function badgeFromRecord(rec: GameRecord): Badge {
 
 const BLOCKED: ReadonlySet<Badge> = new Set(['update-needed', 'unavailable']);
 
-/** Runs once the device has created its first game. Task 19 asks for persistent storage here. */
-export function afterFirstGameCreated(): void {}
+/** Runs once the device has created its first game: ask the browser to keep our storage. */
+export function afterFirstGameCreated(): void {
+  requestPersist();
+}
 
 export class AppSession {
   readonly state = new Store<AppState>({ status: 'offline', profile: null, games: null, badges: {} });
