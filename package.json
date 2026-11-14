@@ -10,12 +10,15 @@
     "build": "npm run wasm && tsc --noEmit && vite build",
     "preview": "vite preview --port 4173",
     "test:int": "vitest run --project integration",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "nats:up": "docker compose -f infra/nats/docker-compose.yml up -d && bash infra/nats/wait.sh && bash infra/nats/provision.sh",
+    "nats:down": "docker compose -f infra/nats/docker-compose.yml down"
   },
   "keywords": [],
   "type": "module",
   "private": true,
   "devDependencies": {
+    "@nats-io/jetstream": "npm:@jsr/nats-io__jetstream@3.4.0",
     "@playwright/test": "^1.65.1",
     "@types/node": "^26.6.6",
     "fake-indexeddb": "^6.2.8",
