@@ -546,4 +546,21 @@ describe('GameController', () => {
     await settle();
     expect(host.c.state.doc?.shots[0]).toEqual([55]);
   });
+
+  it('a peer heard with a lower seq → one re-read, and a server that lost the move gets it back', async () => {
+    const { id, secret, host } = await battle();
+    expect((await host.c.act({ type: 'fire', seat: 0, cell: 99 })).kind).toBe('ok');
+    await settle();
+    const mine = host.c.state.doc!;
+    // The server lost the key (expiry, or a restore); a peer still on an older seq says hello.
+    kv.del(`g.${id}`);
+    const sealer = await createSealer(id, secret);
+    const gets = host.conn.kvView.gets;
+    bus.client().publish(`bship.${id}.here`, await sealer.sealJson('here', { t: 'hb', seat: 1, playerId: 'p1', seq: 1 }));
+    await settle();
+    await settle();
+    expect(host.conn.kvView.gets).toBe(gets + 1);
+    const server = (await sealer.openJson('doc', (await kv.get(`g.${id}`))!.value)) as GameDoc;
+    expect(server).toEqual(mine);
+  });
 });

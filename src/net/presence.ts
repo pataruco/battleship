@@ -33,7 +33,9 @@ function isPresenceMsg(x: unknown): x is PresenceMsg {
 /**
  * Sealed heartbeats and "moved" notes on `bship.<id>.here` (spec §7 Presence, R1, R11).
  * Events: `opponent` ({ here }) when the other seat appears or goes away, and `seq` ({ seq })
- * when any message carries a seq higher than ours, meaning the doc moved on: `kv.get` it.
+ * when a message carries a seq other than ours: higher means the doc moved on, lower means the
+ * peer (or the server) is behind. Either way `kv.get`: reconcile adopts or writes back. No loop: a
+ * read that finds the server equal does nothing, and the peer's next message carries the new seq.
  */
 export class Presence extends EventTarget {
   private readonly nc: BusLike;
@@ -160,7 +162,7 @@ export class Presence extends EventTarget {
   }
 
   private receive(msg: PresenceMsg): void {
-    if (msg.seq > this.getSeq()) this.emit('seq', { seq: msg.seq });
+    if (msg.seq !== this.getSeq()) this.emit('seq', { seq: msg.seq });
     if (msg.seat === this.me.seat) return; // another tab of mine
     if (msg.t === 'bye') {
       if (this.lastSeen !== null) this.setAway();
@@ -190,15 +192,15 @@ export class Presence extends EventTarget {
 
 /**
  * Listen-only presence for a device that has no seat yet (the Who-are-you screen): which seats
- * were heard from in the last 45 s. Sends nothing. Events: `change` on every message, and `seq`
- * ({ seq }) when a message carries a seq higher than `getSeq()` (the doc moved on).
+ * were heard from in the last 45 s. Sends nothing. Events: `change` on every message, and, when
+ * `getSeq` is given, `seq` ({ seq }) when a message carries a seq other than `getSeq()`.
  */
 export class SeatWatch extends EventTarget {
   private readonly nc: BusLike;
   private readonly sealer: Sealer;
   private readonly subject: string;
   private readonly now: () => number;
-  private readonly getSeq: () => number;
+  private readonly getSeq: (() => number) | null;
   private sub: Subscription | null = null;
   private readonly seen: [number | null, number | null] = [null, null];
 
@@ -208,7 +210,7 @@ export class SeatWatch extends EventTarget {
     this.sealer = o.sealer;
     this.subject = `bship.${o.id}.here`;
     this.now = o.now ?? Date.now;
-    this.getSeq = o.getSeq ?? (() => Number.MAX_SAFE_INTEGER);
+    this.getSeq = o.getSeq ?? null;
   }
 
   start(): void {
@@ -235,7 +237,7 @@ export class SeatWatch extends EventTarget {
         if (this.sub !== sub || !isPresenceMsg(msg)) continue;
         this.seen[msg.seat] = msg.t === 'bye' ? null : this.now();
         this.dispatchEvent(new Event('change'));
-        if (msg.seq > this.getSeq()) this.dispatchEvent(new CustomEvent('seq', { detail: { seq: msg.seq } }));
+        if (this.getSeq && msg.seq !== this.getSeq()) this.dispatchEvent(new CustomEvent('seq', { detail: { seq: msg.seq } }));
       }
     } catch {
       // Subscription closed with the connection.
