@@ -103,6 +103,11 @@ export class Presence extends EventTarget {
     this.publish(this.bye.data);
   }
 
+  /** Stops without saying bye (a rebuild on the same connection: we are still here). */
+  abandon(): void {
+    this.halt();
+  }
+
   /** Seals the `bye` for the current seq ahead of time (call when seq changes). */
   async prepareBye(): Promise<void> {
     const seq = this.getSeq();
@@ -185,22 +190,25 @@ export class Presence extends EventTarget {
 
 /**
  * Listen-only presence for a device that has no seat yet (the Who-are-you screen): which seats
- * were heard from in the last 45 s. Sends nothing. Event: `change` on every message.
+ * were heard from in the last 45 s. Sends nothing. Events: `change` on every message, and `seq`
+ * ({ seq }) when a message carries a seq higher than `getSeq()` (the doc moved on).
  */
 export class SeatWatch extends EventTarget {
   private readonly nc: BusLike;
   private readonly sealer: Sealer;
   private readonly subject: string;
   private readonly now: () => number;
+  private readonly getSeq: () => number;
   private sub: Subscription | null = null;
   private readonly seen: [number | null, number | null] = [null, null];
 
-  constructor(o: { nc: BusLike; sealer: Sealer; id: string; now?: () => number }) {
+  constructor(o: { nc: BusLike; sealer: Sealer; id: string; now?: () => number; getSeq?: () => number }) {
     super();
     this.nc = o.nc;
     this.sealer = o.sealer;
     this.subject = `bship.${o.id}.here`;
     this.now = o.now ?? Date.now;
+    this.getSeq = o.getSeq ?? (() => Number.MAX_SAFE_INTEGER);
   }
 
   start(): void {
@@ -227,6 +235,7 @@ export class SeatWatch extends EventTarget {
         if (this.sub !== sub || !isPresenceMsg(msg)) continue;
         this.seen[msg.seat] = msg.t === 'bye' ? null : this.now();
         this.dispatchEvent(new Event('change'));
+        if (msg.seq > this.getSeq()) this.dispatchEvent(new CustomEvent('seq', { detail: { seq: msg.seq } }));
       }
     } catch {
       // Subscription closed with the connection.
