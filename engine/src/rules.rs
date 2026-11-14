@@ -39,7 +39,11 @@ impl Rules {
     /// Cell of segment `i` of a ship, or `None` if it leaves the board.
     fn segment(&self, bow: usize, dir: u8, i: usize) -> Option<usize> {
         let (row, col) = (bow / self.size, bow % self.size);
-        let (row, col) = if dir == 0 { (row, col + i) } else { (row + i, col) };
+        let (row, col) = if dir == 0 {
+            (row, col + i)
+        } else {
+            (row + i, col)
+        };
         (row < self.size && col < self.size).then_some(row * self.size + col)
     }
 }
@@ -49,13 +53,16 @@ pub fn fleet_check(rules: &Rules, fleet: &[u8]) -> i32 {
     if fleet.len() != rules.fleet_len() {
         return FLEET_WRONG_SHIPS;
     }
-    let pairs = fleet.chunks_exact(2);
-    if pairs.clone().any(|p| p[1] > 1 || usize::from(p[0]) >= rules.cells()) {
+    let pairs = fleet.as_chunks::<2>().0;
+    if pairs
+        .iter()
+        .any(|p| p[1] > 1 || usize::from(p[0]) >= rules.cells())
+    {
         return FLEET_WRONG_SHIPS;
     }
     let mut taken = [false; MAX_CELLS];
     let mut overlap = false;
-    for (pair, &len) in pairs.zip(rules.lengths.iter()) {
+    for (pair, &len) in pairs.iter().zip(rules.lengths.iter()) {
         for i in 0..usize::from(len) {
             match rules.segment(usize::from(pair[0]), pair[1], i) {
                 None => return FLEET_OUT_OF_BOUNDS,
@@ -88,11 +95,8 @@ pub fn fleet_random(rules: &Rules, seed: &[u8; 16], out: &mut [u8]) -> i32 {
             for _ in 0..TRIES_PER_SHIP {
                 let bow = rng.below(rules.cells() as u32) as usize;
                 let dir = rng.below(2) as u8;
-                let fits = (0..usize::from(len)).all(|i| {
-                    rules
-                        .segment(bow, dir, i)
-                        .is_some_and(|c| !taken[c])
-                });
+                let fits = (0..usize::from(len))
+                    .all(|i| rules.segment(bow, dir, i).is_some_and(|c| !taken[c]));
                 if fits {
                     for i in 0..usize::from(len) {
                         if let Some(c) = rules.segment(bow, dir, i) {
@@ -114,12 +118,19 @@ pub fn fleet_random(rules: &Rules, seed: &[u8; 16], out: &mut [u8]) -> i32 {
     1
 }
 
-/// Per-cell ship index (`NO_SHIP` for water) and which cells were validly shot.
+/// Marker in `layout`'s per-cell owner table for water (no ship).
 const NO_SHIP: u8 = u8::MAX;
 
+/// Per-cell ship index, `NO_SHIP` for water.
 fn layout(rules: &Rules, fleet: &[u8]) -> [u8; MAX_CELLS] {
     let mut owner = [NO_SHIP; MAX_CELLS];
-    for (k, (pair, &len)) in fleet.chunks_exact(2).zip(rules.lengths.iter()).enumerate() {
+    for (k, (pair, &len)) in fleet
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .zip(rules.lengths.iter())
+        .enumerate()
+    {
         for i in 0..usize::from(len) {
             if let Some(c) = rules.segment(usize::from(pair[0]), pair[1], i) {
                 owner[c] = k as u8;

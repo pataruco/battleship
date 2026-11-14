@@ -1,5 +1,6 @@
 //! Sea-battle rules engine, compiled to WASM without wasm-bindgen.
 
+mod qr;
 mod rng;
 pub mod rules;
 
@@ -38,7 +39,10 @@ const BOARD_BYTES: usize = 100;
 /// `fleet` must point to 10 readable bytes.
 #[no_mangle]
 pub unsafe extern "C" fn fleet_check(fleet: *const u8) -> i32 {
-    rules::fleet_check(&Rules::CLASSIC, core::slice::from_raw_parts(fleet, FLEET_BYTES))
+    rules::fleet_check(
+        &Rules::CLASSIC,
+        core::slice::from_raw_parts(fleet, FLEET_BYTES),
+    )
 }
 
 /// # Safety
@@ -93,6 +97,25 @@ pub unsafe extern "C" fn board_cells(
         reveal != 0,
         core::slice::from_raw_parts_mut(out, BOARD_BYTES),
     );
+}
+
+/// Encode UTF-8 text as a QR code; returns side length or a negative error.
+///
+/// # Safety
+/// `text` must point to `len` readable bytes and `out` to `cap` writable bytes.
+#[no_mangle]
+pub unsafe extern "C" fn qr_encode(text: *const u8, len: u32, out: *mut u8, cap: u32) -> i32 {
+    let text = if len == 0 {
+        &[][..]
+    } else {
+        core::slice::from_raw_parts(text, len as usize)
+    };
+    let out = if cap == 0 {
+        &mut [][..]
+    } else {
+        core::slice::from_raw_parts_mut(out, cap as usize)
+    };
+    qr::qr_encode_into(text, out)
 }
 
 #[cfg(test)]
