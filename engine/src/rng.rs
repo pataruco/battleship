@@ -10,8 +10,8 @@ pub struct Xoshiro128 {
 impl Xoshiro128 {
     pub fn from_seed(seed: &[u8; 16]) -> Self {
         let mut s = [0u32; 4];
-        for (word, chunk) in s.iter_mut().zip(seed.chunks_exact(4)) {
-            *word = u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+        for (word, chunk) in s.iter_mut().zip(seed.as_chunks::<4>().0) {
+            *word = u32::from_le_bytes(*chunk);
         }
         if s == [0; 4] {
             s = ZERO_SEED_STATE;

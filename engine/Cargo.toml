@@ -12,3 +12,9 @@ lto = true
 codegen-units = 1
 panic = "abort"
 strip = true
+
+[dependencies]
+qrcodegen = "1.8"
+
+[dev-dependencies]
+rqrr = { version = "0.11", default-features = false }
