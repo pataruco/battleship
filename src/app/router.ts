@@ -18,7 +18,8 @@ export function parseRoute(hash: string): Route {
   const parts = path.split('/');
   if (parts.length === 4 && parts[0] === '' && parts[1] === 'g') {
     const [, , id = '', secret = ''] = parts;
-    if (UUID.test(id) && SECRET.test(secret)) return { name: 'game', id, secret };
+    // The id is the AAD and the HKDF salt: one spelling per game.
+    if (UUID.test(id) && SECRET.test(secret)) return { name: 'game', id: id.toLowerCase(), secret };
   }
   return { name: 'not-found' };
 }

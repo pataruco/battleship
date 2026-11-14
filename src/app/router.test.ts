@@ -16,6 +16,14 @@ describe('parseRoute', () => {
   it('parses a game link', () => {
     expect(parseRoute(`#/g/${ID}/${SECRET}`)).toEqual({ name: 'game', id: ID, secret: SECRET });
   });
+  it('lower-cases the uuid: an upper-case link opens the same game (the secret keeps its case)', () => {
+    expect(parseRoute(`#/g/${ID.toUpperCase()}/${SECRET.toUpperCase()}`)).toEqual({
+      name: 'game',
+      id: ID,
+      secret: SECRET.toUpperCase(),
+    });
+    expect(linkToHash(`#/g/${ID.toUpperCase()}/${SECRET}`)).toBe(`#/g/${ID}/${SECRET}`);
+  });
   it('rejects a bad uuid or secret', () => {
     expect(parseRoute(`#/g/not-a-uuid/${SECRET}`)).toEqual({ name: 'not-found' });
     expect(parseRoute(`#/g/${ID}/short`)).toEqual({ name: 'not-found' });
