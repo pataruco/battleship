@@ -6,6 +6,7 @@ import { renderGame } from './app/screens/game';
 import { renderHome } from './app/screens/home';
 import { renderProfile } from './app/screens/profile';
 import { renderStart } from './app/screens/start';
+import { renderUnavailable } from './app/screens/unavailable';
 import { el } from './app/el';
 import { logError } from './app/errors';
 import { captureInstallPrompt, registerSw } from './app/pwa';
@@ -66,7 +67,17 @@ async function render(route: Route): Promise<void> {
   } else if (import.meta.env.DEV && route.name === 'dev-local') {
     renderDevLocal(app);
   } else if (route.name === 'not-found') {
-    message(t().notFound, true);
+    // A bad or mistyped link (spec §10.4): friendly, with a way to start playing.
+    renderUnavailable(app, {
+      kind: 'not-found',
+      onNewGame: async () => {
+        if (!(await profileRepo.get().catch(() => null))) {
+          window.location.hash = '#/profile';
+          return;
+        }
+        await newGame();
+      },
+    });
   } else {
     message(t().comingSoon, true);
   }
