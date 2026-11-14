@@ -83,6 +83,19 @@ describe('<sea-grid>', () => {
     expect(aims).toEqual([]);
   });
 
+  it('Space dispatches aim in target mode', () => {
+    cell(3).focus();
+    key(cell(3), ' ');
+    expect(aims).toEqual([3]);
+  });
+
+  it('Enter in place mode never dispatches aim', () => {
+    grid.mode = 'place';
+    cell(3).focus();
+    key(cell(3), 'Enter');
+    expect(aims).toEqual([]);
+  });
+
   it('own mode never dispatches aim', () => {
     grid.mode = 'own';
     cell(4).click();

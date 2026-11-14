@@ -81,7 +81,7 @@ export function renderDevLocal(root: HTMLElement): void {
       grid,
       dock,
       h('button', {
-        text: ready ? 'Ready!' : 'Ready',
+        text: ready ? '✅ Ready!' : '✅ Ready',
         disabled: ready || doc.fleets[seat] === null,
         onclick: () =>
           apply({ type: 'ready', seat, coin: crypto.getRandomValues(new Uint8Array(1))[0]! % 2 as SeatIndex }),
@@ -97,7 +97,7 @@ export function renderDevLocal(root: HTMLElement): void {
     target.aim = aim;
     const fire = h('button', {
       class: 'fire',
-      text: 'FIRE',
+      text: '💥 FIRE',
       disabled: aim === null,
       onclick: () => {
         if (aim !== null) apply({ type: 'fire', seat: me, cell: aim });
