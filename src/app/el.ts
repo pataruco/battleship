@@ -17,3 +17,18 @@ export function el<K extends keyof HTMLElementTagNameMap>(
   node.append(...children);
   return node;
 }
+
+/**
+ * A polite live region and its `say`. Saying the same words twice still announces: the text is
+ * cleared first and set on the next frame.
+ */
+export function liveRegion(className = 'live'): { node: HTMLElement; say: (text: string) => void } {
+  const node = el('p', { class: className, 'aria-live': 'polite', role: 'status' });
+  let frame = 0;
+  const say = (text: string) => {
+    cancelAnimationFrame(frame);
+    node.textContent = '';
+    frame = requestAnimationFrame(() => (node.textContent = text));
+  };
+  return { node, say };
+}

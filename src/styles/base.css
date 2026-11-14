@@ -7,6 +7,10 @@
   *::after {
     box-sizing: border-box;
   }
+  /* A class that sets display (button.big, .float) must never un-hide an element. */
+  [hidden] {
+    display: none !important;
+  }
   body {
     margin: 0;
     font-family: ui-rounded, system-ui;
@@ -446,6 +450,209 @@
     display: grid;
     gap: 0.5rem;
   }
+
+  /* Placement, battle, round over, debug (Task 16) */
+  player-badge {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 3rem;
+  }
+  .badge-words {
+    display: grid;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .badge-name {
+    font-weight: bold;
+  }
+  .badge-text {
+    font-size: 1.15rem;
+  }
+  .dot {
+    display: inline-block;
+    width: 0.75rem;
+    height: 0.75rem;
+    border-radius: 50%;
+    border: 2px solid var(--ink);
+    vertical-align: middle;
+  }
+  .dot.here {
+    background: var(--ok);
+  }
+  .dot.away {
+    background: var(--paper);
+  }
+  .screen.battle {
+    max-width: 72rem;
+    container: battle / inline-size;
+  }
+  .battle-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .battle.my-turn player-badge.turn .badge-text {
+    color: var(--ok);
+    font-weight: bold;
+    font-size: 1.4rem;
+  }
+  .away {
+    margin: 0;
+    color: var(--miss);
+  }
+  .menu {
+    position: relative;
+  }
+  .menu summary {
+    list-style: none;
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 0.4rem 1rem;
+    border-radius: 0.75rem;
+    border: 2px solid var(--sea-deep);
+    background: var(--foam);
+    cursor: pointer;
+  }
+  .menu summary::-webkit-details-marker {
+    display: none;
+  }
+  .menu-items {
+    position: absolute;
+    right: 0;
+    z-index: 2;
+    display: grid;
+    gap: 0.5rem;
+    margin-top: 0.25rem;
+    padding: 0.5rem;
+    min-width: 14rem;
+    border-radius: 0.75rem;
+    border: 2px solid var(--sea-deep);
+    background: var(--paper);
+  }
+  .battle-boards {
+    display: grid;
+    gap: 1rem;
+  }
+  .battle-boards h2 {
+    margin: 0 0 0.25rem;
+  }
+  .battle .mine {
+    display: none;
+  }
+  .battle.show-mine .mine {
+    display: block;
+  }
+  .battle .mine sea-grid {
+    --cell-min: 20px;
+    max-width: 20rem;
+  }
+  .mine-toggle[aria-expanded='true'] {
+    background: var(--sea-deep);
+    color: #fff;
+  }
+  @container battle (min-width: 900px) {
+    .battle-boards {
+      grid-template-columns: 1fr 1fr;
+    }
+    .battle .mine {
+      display: block;
+    }
+    .battle .mine sea-grid {
+      --cell-min: 32px;
+      max-width: 36rem;
+    }
+    .mine-toggle {
+      display: none;
+    }
+  }
+  sea-grid [role='grid'][aria-disabled='true'] .cell {
+    cursor: default;
+  }
+  .battle:not(.my-turn) .their sea-grid {
+    opacity: 0.8;
+  }
+  .aim-label {
+    margin: 0.5rem 0;
+    font-size: 1.4rem;
+    font-weight: bold;
+    text-align: center;
+  }
+  fire-button {
+    display: block;
+  }
+  fire-button button.fire {
+    background: var(--danger);
+    color: #fff;
+    border-color: var(--danger);
+    width: 100%;
+    min-height: 64px;
+    font-size: 1.6rem;
+  }
+  .result {
+    margin: 0;
+    min-height: 1.5em;
+    font-size: 1.4rem;
+    font-weight: bold;
+    text-align: center;
+  }
+  emoji-bar {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.25rem;
+  }
+  emoji-bar button.emoji {
+    min-width: 48px;
+    padding: 0.2rem;
+    font-size: 1.6rem;
+    background: var(--paper);
+  }
+  .float {
+    position: fixed;
+    left: 50%;
+    top: 40%;
+    margin: 0;
+    font-size: 6rem;
+    pointer-events: none;
+    translate: -50% -50%;
+  }
+  .float[hidden] {
+    display: none;
+  }
+  .score {
+    margin: 0;
+    font-size: 1.6rem;
+    font-weight: bold;
+    text-align: center;
+  }
+  .round-over h1 {
+    text-align: center;
+  }
+  .round-over .reveal {
+    max-width: 24rem;
+    margin: 0 auto;
+  }
+  .debug dl {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 0.25rem 0.75rem;
+    margin: 0;
+  }
+  .debug dt {
+    font-weight: bold;
+  }
+  .debug dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+  .debug-errors {
+    font-family: ui-monospace, monospace;
+    font-size: 0.85rem;
+    overflow-wrap: anywhere;
+  }
 }
 
 @layer fx {
@@ -456,6 +663,50 @@
     .waiting {
       animation: bob 1.6s ease-in-out infinite;
     }
+    .play-again.pulse {
+      animation: pulse 1.2s ease-in-out infinite;
+    }
+    .float.go {
+      animation: float-up 2s ease-out forwards;
+    }
+    .battle[data-fx='fire'] .their .cell.aimed {
+      animation: pulse 0.3s ease-in-out infinite;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .float.go {
+      animation: fade 2s ease-out forwards;
+    }
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+}
+
+@keyframes float-up {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-30vh) scale(1.4);
+  }
+}
+
+@keyframes fade {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
   }
 }
 

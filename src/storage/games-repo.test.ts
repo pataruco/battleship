@@ -30,6 +30,15 @@ beforeEach(async () => {
 });
 
 describe('gamesRepo', () => {
+  it('patch sets device flags and keeps the cached doc', async () => {
+    await gamesRepo.put(rec('a', { doc: doc(5), seq: 5 }));
+    expect(await gamesRepo.patch('a', { nudgeShown: true })).toBe(true);
+    const got = await gamesRepo.get('a');
+    expect(got?.nudgeShown).toBe(true);
+    expect(got?.doc?.seq).toBe(5);
+    expect(await gamesRepo.patch('missing', { shared: true })).toBe(false);
+  });
+
   it('puts, gets and removes', async () => {
     await gamesRepo.put(rec('a'));
     expect((await gamesRepo.get('a'))?.id).toBe('a');

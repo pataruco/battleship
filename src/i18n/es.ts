@@ -93,6 +93,11 @@ export const es: Messages = {
   waitingFor: (name) => `Esperando a ${name}…`,
   shipName: (i) => shipNames.es[i] ?? '',
   shipDock: 'Tus barcos',
+  placeKeysHint: 'Teclado: Enter levanta un barco, las flechas lo mueven, Enter lo deja y R lo gira.',
+  shipPicked: (ship) => `Levantaste el barco ${ship}. Muévelo con las flechas y presiona Enter`,
+  shipAt: (ship, label) => `${ship}, ${label}`,
+  shipPutBack: (ship) => `${ship} volvió a su lugar`,
+  shipTurned: (ship) => `${ship} girado`,
 
   // Battle
   theirSea: 'Su mar',
@@ -112,6 +117,9 @@ export const es: Messages = {
   away: (name) => `${name} no está. Tu jugada lo estará esperando`,
   here: (name) => `${name} está aquí`,
   react: 'Mandar una reacción',
+  reacted: (name, emoji) => `${name}: ${emoji}`,
+  fizzle: '¡Pfff! El disparo se perdió. Inténtalo de nuevo',
+  menu: 'Menú',
 
   // Round over
   youWon: '¡Ganaste!',
@@ -140,6 +148,7 @@ export const es: Messages = {
   copyForApp: 'Copiar para la app',
   playingInApp: '¿Juegas en la app de la pantalla de inicio? Copia este enlace y usa Pegar enlace allá',
   grownUpSetup: 'Tarea para adultos: pon el enlace del juego en la app de cada niño',
+  keepSafe: 'Cuida este juego: mándaselo a un adulto',
   storageNudge: 'Abre la app de vez en cuando para no perder tus juegos',
 
   // Debug
@@ -147,6 +156,7 @@ export const es: Messages = {
   debugConnection: 'Conexión',
   debugServer: 'Servidor',
   debugBucket: 'Depósito',
+  debugGame: 'Juego',
   debugRevision: 'Revisión',
   debugSeq: 'Número de jugada',
   debugVersions: 'Versiones',
