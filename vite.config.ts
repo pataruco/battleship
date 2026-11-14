@@ -33,6 +33,8 @@ export default defineConfig(({ mode }) => {
     build: {
       target: ['safari16.4', 'chrome120', 'firefox120'],
       cssMinify: 'lightningcss',
+      // The sprite and wasm are fetched by URL; a data: URL would break under connect-src 'self'.
+      assetsInlineLimit: 0,
       rollupOptions: {
         treeshake: { moduleSideEffects: (id: string) => !/@nats-io/.test(id) },
         output: { codeSplitting: false },
