@@ -9,7 +9,13 @@ interface EngineExports {
   fleet_check(fleet: number): number;
   fleet_random(seed: number, out: number): number;
   shot_outcome(fleet: number, shots: number, n: number): number;
-  board_cells(fleet: number, shots: number, n: number, reveal: number, out: number): void;
+  board_cells(
+    fleet: number,
+    shots: number,
+    n: number,
+    reveal: number,
+    out: number,
+  ): void;
   qr_encode(text: number, len: number, out: number, cap: number): number;
 }
 
@@ -32,13 +38,24 @@ const FLEET_ERRORS: Record<number, FleetError | undefined> = {
   2: 'overlap',
   3: 'wrong_ships',
 };
-const CELL_STATES: readonly CellState[] = ['unknown', 'miss', 'hit', 'sunk', 'ship'];
+const CELL_STATES: readonly CellState[] = [
+  'unknown',
+  'miss',
+  'hit',
+  'sunk',
+  'ship',
+];
 const QR_CAP = 177 * 177;
 
 function encodeFleet(fleet: Ship[]): Uint8Array {
+  if (fleet.length !== 5) throw new RangeError('invalid');
   const out = new Uint8Array(10);
-  fleet.slice(0, 5).forEach((ship, i) => {
-    out[i * 2] = ship.bow;
+  fleet.forEach((ship, i) => {
+    // 255 is never a valid cell: Rust rejects it, instead of Uint8Array wrapping 300 to 44.
+    out[i * 2] =
+      Number.isInteger(ship.bow) && ship.bow >= 0 && ship.bow <= 99
+        ? ship.bow
+        : 255;
     out[i * 2 + 1] = ship.dir === 'h' ? 0 : ship.dir === 'v' ? 1 : 2;
   });
   return out;
@@ -53,7 +70,8 @@ function decodeFleet(bytes: Uint8Array): Ship[] {
 
 function checkShots(shots: Cell[]): Uint8Array {
   for (const cell of shots) {
-    if (!Number.isInteger(cell) || cell < 0 || cell > 99) throw new RangeError('out_of_range');
+    if (!Number.isInteger(cell) || cell < 0 || cell > 99)
+      throw new RangeError('out_of_range');
   }
   return Uint8Array.from(shots);
 }
@@ -84,23 +102,26 @@ function wrap(x: EngineExports): Engine {
     }
   }
 
+  function checkFleet(fleet: Ship[]): FleetError | null {
+    if (fleet.length !== 5) return 'wrong_ships';
+    return (
+      FLEET_ERRORS[withBuf(encodeFleet(fleet), (p) => x.fleet_check(p))] ?? null
+    );
+  }
+
   return {
     version: x.engine_version(),
     bytes,
     alloc: (len) => x.alloc(len),
     dealloc: (ptr, len) => x.dealloc(ptr, len),
 
-    checkFleet(fleet) {
-      if (fleet.length !== 5) return 'wrong_ships';
-      if (fleet.some((s) => !Number.isInteger(s.bow) || s.bow < 0 || s.bow > 99)) {
-        return 'wrong_ships';
-      }
-      return FLEET_ERRORS[withBuf(encodeFleet(fleet), (p) => x.fleet_check(p))] ?? null;
-    },
+    checkFleet,
 
     randomFleet(seed) {
       if (seed.length !== 16) throw new RangeError('invalid');
-      const [, out] = withBuf(seed, (sp) => withOut(10, (op) => x.fleet_random(sp, op)));
+      const [, out] = withBuf(seed, (sp) =>
+        withOut(10, (op) => x.fleet_random(sp, op)),
+      );
       return decodeFleet(out);
     },
 
@@ -120,10 +141,13 @@ function wrap(x: EngineExports): Engine {
     },
 
     boardCells(fleet, shots, reveal) {
+      if (checkFleet(fleet) !== null) throw new RangeError('invalid');
       const shotBytes = checkShots(shots);
       const [, out] = withBuf(encodeFleet(fleet), (fp) =>
         withBuf(shotBytes, (sp) =>
-          withOut(100, (op) => x.board_cells(fp, sp, shotBytes.length, reveal ? 1 : 0, op)),
+          withOut(100, (op) =>
+            x.board_cells(fp, sp, shotBytes.length, reveal ? 1 : 0, op),
+          ),
         ),
       );
       return Array.from(out, (v) => CELL_STATES[v] ?? 'unknown');
@@ -147,10 +171,16 @@ export async function loadEngine(source?: BufferSource): Promise<Engine> {
   } else {
     const response = await fetch(wasmUrl);
     try {
-      ({ instance } = await WebAssembly.instantiateStreaming(response.clone(), {}));
+      ({ instance } = await WebAssembly.instantiateStreaming(
+        response.clone(),
+        {},
+      ));
     } catch {
       // Wrong MIME type or no streaming support: fall back to buffered compile.
-      ({ instance } = await WebAssembly.instantiate(await response.arrayBuffer(), {}));
+      ({ instance } = await WebAssembly.instantiate(
+        await response.arrayBuffer(),
+        {},
+      ));
     }
   }
   return wrap(instance.exports as unknown as EngineExports);
