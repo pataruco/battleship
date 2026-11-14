@@ -9,6 +9,13 @@ describe('natsConfig', () => {
     expect(c).toEqual({ url: 'wss://x.example:443', auth: { kind: 'none' }, bucket: 'bship_games' });
   });
 
+  it('honours VITE_KV_BUCKET', () => {
+    expect(natsConfig({ VITE_NATS_URL: 'ws://h', VITE_KV_BUCKET: 'bship_staging' }, loc('http:', 'a')).bucket).toBe(
+      'bship_staging',
+    );
+    expect(natsConfig({ VITE_NATS_URL: 'ws://h', VITE_KV_BUCKET: '' }, loc('http:', 'a')).bucket).toBe('bship_games');
+  });
+
   it('reads userpass', () => {
     const c = natsConfig(
       { VITE_NATS_URL: 'ws://h:9222', VITE_NATS_AUTH: 'userpass', VITE_NATS_USER: 'u', VITE_NATS_PASS: 'p' },

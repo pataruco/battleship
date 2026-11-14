@@ -34,5 +34,5 @@ export function natsConfig(
     default:
       throw new Error(`Unknown VITE_NATS_AUTH "${kind}" (expected none, userpass or creds)`);
   }
-  return { url, auth, bucket: 'bship_games' };
+  return { url, auth, bucket: str(env.VITE_KV_BUCKET) || 'bship_games' };
 }
