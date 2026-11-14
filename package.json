@@ -1,0 +1,33 @@
+{
+  "name": "battleship",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "vitest run --project unit",
+    "dev": "vite",
+    "build": "npm run wasm && tsc --noEmit && vite build",
+    "preview": "vite preview --port 4173",
+    "test:int": "vitest run --project integration",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [],
+  "type": "module",
+  "private": "true",
+  "devDependencies": {
+    "@playwright/test": "^1.65.1",
+    "fake-indexeddb": "^6.2.8",
+    "happy-dom": "^21.0.4",
+    "lightningcss": "^1.33.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.0"
+  },
+  "dependencies": {
+    "@nats-io/kv": "npm:@jsr/nats-io__kv@3.4.0",
+    "@nats-io/nats-core": "npm:@jsr/nats-io__nats-core@3.4.0"
+  }
+}
