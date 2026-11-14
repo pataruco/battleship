@@ -16,7 +16,8 @@ export type ReduceError =
   | 'already_fired'
   | 'bad_cell'
   | 'bad_emoji'
-  | 'no_opponent';
+  | 'no_opponent'
+  | 'bad_seat';
 
 export type ReduceResult =
   | { ok: true; doc: GameDoc; outcome?: Outcome }
@@ -76,18 +77,23 @@ export function reduce(
     ...(outcome ? { outcome } : {}),
   });
 
+  if (action.type === 'ready' && action.coin !== 0 && action.coin !== 1)
+    return fail('bad_seat');
+
   if (action.type === 'join') {
     if (doc.phase !== 'setup') return fail('wrong_phase');
     if (doc.seats[1] !== null) return fail('seat_taken');
     return accept({ seats: [doc.seats[0], action.profile] });
   }
 
-  if (action.seat !== 0 && doc.seats[1] === null) return fail('no_opponent');
   const { seat } = action;
+  if (seat !== 0 && seat !== 1) return fail('bad_seat');
+  const noOpponent = seat === 1 && doc.seats[1] === null;
 
   switch (action.type) {
     case 'place': {
       if (doc.phase !== 'setup') return fail('wrong_phase');
+      if (noOpponent) return fail('no_opponent');
       if (engine.checkFleet(action.fleet) !== null) return fail('bad_fleet');
       return accept({
         fleets: set(
@@ -101,6 +107,7 @@ export function reduce(
 
     case 'ready': {
       if (doc.phase !== 'setup') return fail('wrong_phase');
+      if (noOpponent) return fail('no_opponent');
       if (doc.fleets[seat] === null) return fail('no_fleet');
       const ready = set(doc.ready, seat, true);
       if (doc.seats[1] === null || !ready[0] || !ready[1])
@@ -111,14 +118,12 @@ export function reduce(
 
     case 'fire': {
       if (doc.phase !== 'battle') return fail('wrong_phase');
-      if (doc.seats[1] === null) return fail('no_opponent');
       if (doc.turn !== seat) return fail('not_your_turn');
       const { cell } = action;
       if (!Number.isInteger(cell) || cell < 0 || cell > 99)
         return fail('bad_cell');
       if (doc.shots[seat].includes(cell)) return fail('already_fired');
-      const target = doc.fleets[1 - seat];
-      if (!target) return fail('no_fleet');
+      const target = doc.fleets[1 - seat]!; // both fleets are set in battle
       const shots = set(doc.shots, seat, [...doc.shots[seat], cell]);
       const outcome = engine.shotOutcome(target, shots[seat]);
       if (outcome.kind === 'win') {
@@ -136,6 +141,7 @@ export function reduce(
     }
 
     case 'react': {
+      if (noOpponent) return fail('no_opponent');
       if (!EMOJI.includes(action.emoji)) return fail('bad_emoji');
       return accept({
         reactions: set(doc.reactions, seat, { emoji: action.emoji, seq }),
