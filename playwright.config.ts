@@ -18,7 +18,7 @@ export default defineConfig({
     { name: 'webkit', use: { ...devices['Desktop Safari'] } },
   ],
   webServer: {
-    command: 'npm run build && npm run preview',
+    command: 'just build && just preview',
     url: baseURL,
     reuseExistingServer: !process.env.CI,
     timeout: 300_000,
