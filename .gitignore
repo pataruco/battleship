@@ -6,3 +6,7 @@ src/engine/engine.wasm
 test-results/
 playwright-report/
 .superpowers/
+.env
+.env.*
+!.env.example
+*.creds
