@@ -39,7 +39,9 @@ export const es: Messages = {
   off: 'No',
   myProfile: 'Mi perfil',
   removeGame: 'Quitar',
-  removeGameAsk: '¿Quitar este juego de tu lista?',
+  removeGameWith: (name) => `Quitar el juego con ${name}`,
+  removeGameAsk: (name) => `¿Quitar tu juego con ${name} de esta lista?`,
+  removeGameNote: 'Sigue en el aparato del otro jugador.',
   shareAgain: 'Compartir el enlace otra vez',
   openGame: (name) => `Abrir juego con ${name}`,
 

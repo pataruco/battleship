@@ -1,6 +1,6 @@
 import type { Profile } from '../../game/types';
 import { lang, setLang, t, type Lang } from '../../i18n';
-import type { GameRecord } from '../../storage/games-repo';
+import { gamesRepo, type GameRecord } from '../../storage/games-repo';
 import { getPrefs, setPrefs } from '../../storage/prefs';
 import { avatarIcon } from '../../theme/default/avatars';
 import { el } from '../el';
@@ -35,14 +35,21 @@ function badgeText(badge: Badge, opponent: string): string {
   }
 }
 
-function gameCard(rec: GameRecord, badge: Badge): HTMLElement {
+function gameCard(rec: GameRecord, badge: Badge, onRemove: (rec: GameRecord, name: string) => void): HTMLElement {
   const m = t();
   const name = rec.opponent?.name ?? m.waitingForFriend;
   const status = badgeText(badge, rec.opponent?.name ?? '');
   const when = rec.lastMoveAt ? m.lastMove(m.ago(rec.lastMoveAt - Date.now())) : '';
+  const remove = el(
+    'button',
+    { type: 'button', class: 'card-remove', 'aria-label': m.removeGameWith(name) },
+    el('span', { 'aria-hidden': 'true' }, '🗑️'),
+    ` ${m.removeGame}`,
+  );
+  remove.addEventListener('click', () => onRemove(rec, name));
   return el(
     'li',
-    {},
+    { class: 'game-item' },
     el(
       'a',
       { class: `card badge-${badge}`, href: `#/g/${rec.id}/${rec.secret}`, 'aria-label': m.openGame(name) },
@@ -55,7 +62,40 @@ function gameCard(rec: GameRecord, badge: Badge): HTMLElement {
         when ? el('small', {}, when) : '',
       ),
     ),
+    remove,
   );
+}
+
+/** Spec §8 "Remove from my list": local only, behind a confirm. The server copy expires on its own. */
+function removeDialog(onRemoved: () => void): { node: HTMLDialogElement; ask: (rec: GameRecord, name: string) => void } {
+  const question = el('p', { id: 'remove-game-q' });
+  const note = el('p', {});
+  const yes = el('button', { type: 'button', class: 'big danger' }, el('span', { 'aria-hidden': 'true' }, '🗑️'), '');
+  const no = el('button', { type: 'button', class: 'big cancel' }, '');
+  const node = el('dialog', { class: 'confirm', 'aria-labelledby': 'remove-game-q' }, question, note, el('div', { class: 'confirm-actions' }, yes, no));
+  let target: GameRecord | null = null;
+  yes.addEventListener('click', async () => {
+    const id = target?.id;
+    target = null;
+    node.close();
+    if (!id) return;
+    await gamesRepo.remove(id).catch(() => {});
+    onRemoved();
+  });
+  no.addEventListener('click', () => {
+    target = null;
+    node.close();
+  });
+  const ask = (rec: GameRecord, name: string) => {
+    const m = t();
+    target = rec;
+    question.textContent = m.removeGameAsk(name);
+    note.textContent = m.removeGameNote;
+    yes.lastChild!.textContent = ` ${m.removeGame}`;
+    no.textContent = m.cancel;
+    node.showModal();
+  };
+  return { node, ask };
 }
 
 function toggle(label: string, icon: string, on: boolean, onChange: (v: boolean) => void): HTMLButtonElement {
@@ -80,6 +120,20 @@ export function renderHome(
 ): () => void {
   const games = el('ul', { class: 'games' });
   const live = el('p', { class: 'error', role: 'alert' });
+  const connStatus = el('p', { class: 'conn-status', role: 'status' });
+  // After a removal, the list from this device only: removing never touches the server.
+  const remove = removeDialog(() => {
+    void gamesRepo
+      .list()
+      .then((list) => session.state.set({ games: list }))
+      .catch(() => {});
+  });
+
+  const paintStatus = () => {
+    const { status } = session.state.get();
+    const m = t();
+    connStatus.textContent = status === 'busy' ? m.busy : status === 'auth-failed' ? m.authFailed : '';
+  };
 
   const paintGames = () => {
     const { games: list, badges } = session.state.get();
@@ -88,7 +142,7 @@ export function renderHome(
       games.replaceChildren(el('li', { class: 'empty' }, m.noGames));
       return;
     }
-    games.replaceChildren(...list.map((rec) => gameCard(rec, badges[rec.id] ?? 'setup')));
+    games.replaceChildren(...list.map((rec) => gameCard(rec, badges[rec.id] ?? 'setup', remove.ask)));
   };
 
   const pasteLink = async () => {
@@ -149,18 +203,22 @@ export function renderHome(
           paste,
         ),
         live,
+        connStatus,
         el('h2', {}, m.myGames),
         games,
         hint.node,
+        remove.node,
       ),
     );
     paintGames();
+    paintStatus();
   };
 
   build();
   let lastStatus = session.state.get().status;
   const onChange = () => {
     paintGames();
+    paintStatus();
     const { status } = session.state.get();
     if (status === 'online' && lastStatus !== 'online') void session.refreshHome().catch(() => {});
     lastStatus = status;

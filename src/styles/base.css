@@ -175,6 +175,32 @@
     display: grid;
     gap: 0.5rem;
   }
+  .game-item {
+    display: flex;
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+  .game-item .card {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .card-remove {
+    flex: 0 0 auto;
+    min-width: 44px;
+    border-radius: 1rem;
+  }
+  button.danger {
+    background: var(--danger);
+    color: #fff;
+    border-color: var(--danger);
+  }
+  .conn-status {
+    margin: 0;
+    font-weight: bold;
+  }
+  .conn-status:empty {
+    display: none;
+  }
   .card {
     display: flex;
     align-items: center;
