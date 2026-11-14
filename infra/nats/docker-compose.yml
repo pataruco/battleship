@@ -1,0 +1,16 @@
+# The nats image is scratch-based (no shell, wget or curl), so there is no
+# container healthcheck. `npm run nats:up` polls readiness with the nats CLI.
+services:
+  nats:
+    image: nats:2.15
+    command: ["-c", "/etc/nats/nats-server.conf"]
+    ports:
+      - "4222:4222"
+      - "9222:9222"
+      - "8222:8222"
+    volumes:
+      - ./nats-server.conf:/etc/nats/nats-server.conf:ro
+      - nats-data:/data
+
+volumes:
+  nats-data:
