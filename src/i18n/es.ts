@@ -118,6 +118,9 @@ export const es: Messages = {
   here: (name) => `${name} está aquí`,
   react: 'Mandar una reacción',
   reacted: (name, emoji) => `${name}: ${emoji}`,
+  emojiName: (emoji) =>
+    ({ '🎉': 'Fiesta', '😱': 'Susto', '😂': 'Risa', '👏': 'Aplausos', '😭': 'Llanto', '🔥': 'Fuego' } as Record<string, string>)[emoji] ??
+    emoji,
   fizzle: '¡Pfff! El disparo se perdió. Inténtalo de nuevo',
   menu: 'Menú',
 

@@ -28,7 +28,6 @@ export type KeepSafeOptions = { id: string; link: string; myName: string; onShar
 export async function maybeKeepSafe(root: HTMLElement, o: KeepSafeOptions): Promise<void> {
   const rec = await gamesRepo.get(o.id).catch(() => null);
   if (!rec || rec.shared || rec.nudgeShown || !root.isConnected) return;
-  await gamesRepo.patch(o.id, { nudgeShown: true }).catch(logError);
   const m = t();
   const share = el('button', { type: 'button', class: 'big primary' }, el('span', { 'aria-hidden': 'true' }, '📤'), ` ${m.share}`);
   const later = el('button', { type: 'button', class: 'big' }, m.gotIt);
@@ -48,4 +47,6 @@ export async function maybeKeepSafe(root: HTMLElement, o: KeepSafeOptions): Prom
   dialog.addEventListener('close', () => dialog.remove());
   root.append(dialog);
   dialog.showModal();
+  // Marked only once it has really been shown.
+  await gamesRepo.patch(o.id, { nudgeShown: true }).catch(logError);
 }

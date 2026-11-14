@@ -117,6 +117,9 @@ const messages = {
   here: (name: string) => `${name} is here`,
   react: 'Send a reaction',
   reacted: (name: string, emoji: string) => `${name}: ${emoji}`,
+  emojiName: (emoji: string) =>
+    ({ '🎉': 'Party', '😱': 'Scared', '😂': 'Laughing', '👏': 'Clapping', '😭': 'Crying', '🔥': 'Fire' } as Record<string, string>)[emoji] ??
+    emoji,
   fizzle: 'Fizzle! The shot got lost. Try again',
   menu: 'Menu',
 

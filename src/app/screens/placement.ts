@@ -10,6 +10,7 @@ import type { DockAnnounce } from '../../ui/ship-dock';
 import { el, liveRegion } from '../el';
 import { logError } from '../errors';
 import type { ControllerState } from '../game-controller';
+import { PRESENCE_GRACE_MS } from './battle';
 import type { GameView, GameViewOptions } from './game';
 
 const key = (f: Ship[] | null) => JSON.stringify(f?.map((s) => [s.bow, s.dir]) ?? null);
@@ -29,7 +30,8 @@ export function renderPlacement(root: HTMLElement, o: GameViewOptions): GameView
   const seat = c.state.seat as SeatIndex;
   const foe = (1 - seat) as SeatIndex;
 
-  const grid = el('sea-grid', { 'aria-label': m.mySea });
+  const grid = el('sea-grid', {});
+  grid.label = m.mySea;
   const dock = el('ship-dock', { 'data-shuffle': m.shuffle, 'data-hint': m.placeHint });
   dock.grid = grid;
   const badge = el('player-badge', { class: 'opponent' });
@@ -45,6 +47,12 @@ export function renderPlacement(root: HTMLElement, o: GameViewOptions): GameView
   let last: Ship[] | null = null;
   let disposed = false;
   let autoPlaced = false;
+  // No away dot until presence has had a chance to hear the opponent.
+  let presenceKnown = c.state.opponentHere;
+  const graceTimer = setTimeout(() => {
+    presenceKnown = true;
+    if (!disposed) update(c.state);
+  }, PRESENCE_GRACE_MS);
 
   /** Latest wins: a change made while one is in flight is sent when it lands. */
   const send = async () => {
@@ -142,9 +150,11 @@ export function renderPlacement(root: HTMLElement, o: GameViewOptions): GameView
 
     const iAmReady = doc.ready[seat];
     const other = doc.seats[foe];
+    if (s.opponentHere) presenceKnown = true;
     badge.info = {
       player: other,
-      here: other ? s.opponentHere : null,
+      here: other && presenceKnown ? s.opponentHere : null,
+      dotLabel: other ? (s.opponentHere ? mm.here(other.name) : mm.away(other.name)) : '',
       text: !other ? mm.waitingForFriend : doc.ready[foe] ? mm.opponentReady(other.name) : '',
     };
     ready.disabled = iAmReady || !mine || s.pending || sending || wanted !== null;
@@ -174,6 +184,7 @@ export function renderPlacement(root: HTMLElement, o: GameViewOptions): GameView
     update,
     dispose: () => {
       disposed = true;
+      clearTimeout(graceTimer);
     },
   };
 }

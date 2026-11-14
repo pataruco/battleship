@@ -31,6 +31,12 @@ describe('<sea-grid>', () => {
     expect(grid.querySelectorAll('[tabindex="0"]')).toHaveLength(1);
   });
 
+  it('names the grid with its label', () => {
+    expect(grid.querySelector('[role="grid"]')?.getAttribute('aria-label')).toBe('Sea');
+    grid.label = 'Their sea';
+    expect(grid.querySelector('[role="grid"]')?.getAttribute('aria-label')).toBe('Their sea');
+  });
+
   it('shows state words, glyphs and the aimed cell', () => {
     const cells: CellState[] = Array.from({ length: 100 }, () => 'unknown');
     cells[1] = 'miss';

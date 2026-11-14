@@ -560,14 +560,21 @@
     .battle .mine {
       display: block;
     }
+    /* Side by side (so the viewport is past 768 px): 44 px cells on both boards, with a slimmer
+       header and gap so two boards fit a 1024 px iPad. */
+    .battle .battle-boards sea-grid {
+      --head: 1.1rem;
+      --gap: 1px;
+    }
     .battle .mine sea-grid {
-      --cell-min: 32px;
+      --cell-min: 44px;
       max-width: 36rem;
     }
     .mine-toggle {
       display: none;
     }
   }
+
   sea-grid [role='grid'][aria-disabled='true'] .cell {
     cursor: default;
   }
@@ -623,6 +630,8 @@
     display: none;
   }
   .score {
+    min-width: 0;
+    overflow-wrap: anywhere;
     margin: 0;
     font-size: 1.6rem;
     font-weight: bold;

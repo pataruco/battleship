@@ -31,6 +31,7 @@ export class SeaGrid extends HTMLElement {
   #disabled = false;
   #aim: Cell | null = null;
   #fleet: Ship[] | null = null;
+  #label = 'Sea';
   #focus = 0;
   #preview: { cells: Cell[]; valid: boolean } | null = null;
   #buttons: HTMLButtonElement[] = [];
@@ -62,6 +63,14 @@ export class SeaGrid extends HTMLElement {
   }
   set aim(v: Cell | null) {
     this.#aim = v;
+    this.#update();
+  }
+  /** The grid's accessible name ("Their sea", "My sea"). */
+  get label(): string {
+    return this.#label;
+  }
+  set label(v: string) {
+    this.#label = v;
     this.#update();
   }
   get fleet(): Ship[] | null {
@@ -111,7 +120,6 @@ export class SeaGrid extends HTMLElement {
     }
     const grid = document.createElement('div');
     grid.setAttribute('role', 'grid');
-    grid.setAttribute('aria-label', 'Sea');
     for (let r = 0; r < 10; r++) {
       const row = document.createElement('div');
       row.setAttribute('role', 'row');
@@ -155,6 +163,7 @@ export class SeaGrid extends HTMLElement {
     if (!this.#built) return;
     const grid = this.querySelector('[role="grid"]');
     grid?.setAttribute('aria-disabled', String(this.#disabled));
+    grid?.setAttribute('aria-label', this.#label);
     this.dataset.mode = this.#mode;
     this.#buttons.forEach((b, cell) => {
       const state = this.#stateOf(cell);
