@@ -329,3 +329,38 @@ describe('engine version', () => {
     expect(newer.engine).toBe(99);
   });
 });
+
+describe('seat and phase ordering', () => {
+  it('fire by an empty seat 1 in setup is wrong_phase', () => {
+    expect(err(fresh(), { type: 'fire', seat: 1, cell: 0 })).toBe(
+      'wrong_phase',
+    );
+  });
+  it('rematch by an empty seat 1 in setup is wrong_phase', () => {
+    expect(err(fresh(), { type: 'rematch', seat: 1 })).toBe('wrong_phase');
+  });
+  it('rejects a seat or coin that is not 0 or 1', () => {
+    expect(err(joined(), { type: 'fire', seat: 2 as never, cell: 0 })).toBe(
+      'bad_seat',
+    );
+    expect(
+      err(joined(), { type: 'react', seat: -1 as never, emoji: '🎉' }),
+    ).toBe('bad_seat');
+    expect(err(placed(), { type: 'ready', seat: 0, coin: 2 as never })).toBe(
+      'bad_seat',
+    );
+  });
+  it('fire does not mutate a frozen doc', () => {
+    const deepFreeze = (o: unknown): void => {
+      if (o && typeof o === 'object') {
+        Object.values(o).forEach(deepFreeze);
+        Object.freeze(o);
+      }
+    };
+    const d = battle();
+    deepFreeze(d);
+    const snapshot = structuredClone(d);
+    ok(reduce(d, { type: 'fire', seat: 1, cell: 0 }, engine));
+    expect(d).toEqual(snapshot);
+  });
+});
