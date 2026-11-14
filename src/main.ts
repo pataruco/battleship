@@ -1,11 +1,13 @@
 import './styles/base.css';
 import { startRouter, type Route } from './app/router';
+import { renderDebug } from './app/screens/debug';
 import { renderDevLocal } from './app/screens/dev-local';
 import { renderGame } from './app/screens/game';
 import { renderHome } from './app/screens/home';
 import { renderProfile } from './app/screens/profile';
 import { renderStart } from './app/screens/start';
 import { el } from './app/el';
+import { logError } from './app/errors';
 import { session } from './app/session';
 import { loadEngine, setEngine } from './engine/engine';
 import { initLang, t } from './i18n';
@@ -58,6 +60,8 @@ async function render(route: Route): Promise<void> {
         },
       });
     }
+  } else if (route.name === 'debug') {
+    dispose = renderDebug(app);
   } else if (import.meta.env.DEV && route.name === 'dev-local') {
     renderDevLocal(app);
   } else if (route.name === 'not-found') {
@@ -69,6 +73,8 @@ async function render(route: Route): Promise<void> {
 
 async function main(): Promise<void> {
   if (!app) return;
+  window.addEventListener('error', (e) => logError(e.error ?? e.message));
+  window.addEventListener('unhandledrejection', (e) => logError(e.reason));
   initLang();
   try {
     setEngine(await loadEngine());

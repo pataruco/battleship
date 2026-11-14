@@ -78,6 +78,14 @@ export class SeaGrid extends HTMLElement {
     this.#update();
   }
 
+  /** Moves the roving focus to `cell` and focuses it. */
+  focusCell(cell: Cell): void {
+    if (!this.#built) return;
+    this.#focus = cell;
+    this.#update();
+    this.#buttons[cell]?.focus();
+  }
+
   /** Cell index under a point, or null. */
   cellFromElement(el: Element | null): Cell | null {
     const btn = el?.closest<HTMLElement>('[data-cell]');
@@ -213,3 +221,9 @@ export class SeaGrid extends HTMLElement {
 }
 
 if (!customElements.get('sea-grid')) customElements.define('sea-grid', SeaGrid);
+
+declare global {
+  interface HTMLElementTagNameMap {
+    'sea-grid': SeaGrid;
+  }
+}

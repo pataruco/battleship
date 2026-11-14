@@ -92,6 +92,11 @@ const messages = {
   waitingFor: (name: string) => `Waiting for ${name}…`,
   shipName: (i: number) => shipNames.en[i] ?? '',
   shipDock: 'Your ships',
+  placeKeysHint: 'Keyboard: Enter picks up a ship, arrows move it, Enter puts it down, R turns it.',
+  shipPicked: (ship: string) => `Picked up the ${ship}. Move it with the arrows, then press Enter`,
+  shipAt: (ship: string, label: string) => `${ship}, ${label}`,
+  shipPutBack: (ship: string) => `${ship} put back`,
+  shipTurned: (ship: string) => `${ship} turned`,
 
   // Battle
   theirSea: 'Their sea',
@@ -111,6 +116,9 @@ const messages = {
   away: (name: string) => `${name} is away. Your move will be waiting`,
   here: (name: string) => `${name} is here`,
   react: 'Send a reaction',
+  reacted: (name: string, emoji: string) => `${name}: ${emoji}`,
+  fizzle: 'Fizzle! The shot got lost. Try again',
+  menu: 'Menu',
 
   // Round over
   youWon: 'You won!',
@@ -139,6 +147,7 @@ const messages = {
   copyForApp: 'Copy for the app',
   playingInApp: 'Playing in the Home Screen app? Copy this link, then use Paste link there',
   grownUpSetup: 'Grown-up job: put the game link in each kid’s Home Screen app',
+  keepSafe: 'Keep this game safe: send it to a grown-up',
   storageNudge: 'Open the app now and then to keep your games',
 
   // Debug
@@ -146,6 +155,7 @@ const messages = {
   debugConnection: 'Connection',
   debugServer: 'Server',
   debugBucket: 'Bucket',
+  debugGame: 'Game',
   debugRevision: 'Revision',
   debugSeq: 'Move number',
   debugVersions: 'Versions',

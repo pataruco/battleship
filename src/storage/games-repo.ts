@@ -11,6 +11,8 @@ export type GameRecord = {
   seq: number;
   opponent: { name: string; avatar: string } | null;
   shared: boolean;
+  /** The one-time "keep this game safe" card was shown on this device (spec §13 nudge 3). */
+  nudgeShown?: boolean;
   addedAt: number;
   lastMoveAt: number | null;
 };
@@ -36,6 +38,15 @@ export const gamesRepo = {
 
   async remove(id: string): Promise<void> {
     await reqP((await store('games', 'readwrite')).delete(id));
+  },
+
+  /** Sets device-only flags in one transaction (never touches the cached doc). False if unknown. */
+  async patch(id: string, flags: Partial<Pick<GameRecord, 'shared' | 'nudgeShown'>>): Promise<boolean> {
+    const os = await store('games', 'readwrite');
+    const rec = await reqP(os.get(id) as IDBRequest<GameRecord | undefined>);
+    if (!rec) return false;
+    await reqP(os.put({ ...rec, ...flags }));
+    return true;
   },
 
   /** Stores only a doc at least as new as the stored one. Returns whether it stored. */

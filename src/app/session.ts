@@ -32,6 +32,8 @@ export function afterFirstGameCreated(): void {}
 
 export class AppSession {
   readonly state = new Store<AppState>({ status: 'offline', profile: null, games: null, badges: {} });
+  /** The game opened last on this page, for `#/debug`. */
+  lastGameId: string | null = null;
   private conn: Connection | null = null;
   private homeRefresh: Promise<GameRecord[]> | null = null;
 

@@ -1,13 +1,36 @@
 import { gameLink } from '../../crypto/link';
-import type { Seat } from '../../game/types';
+import type { Action, Seat } from '../../game/types';
 import { t } from '../../i18n';
+import type { ApplyResult } from '../../net/game-store';
 import { el } from '../el';
+import { logError } from '../errors';
 import type { BannerKind, ControllerState, GameController } from '../game-controller';
 import { session } from '../session';
+import { renderBattle } from './battle';
 import { renderInvite } from './invite';
 import { renderJoin } from './join';
+import { renderPlacement } from './placement';
+import { renderRoundOver } from './round-over';
 import { renderUnavailable } from './unavailable';
 import { renderWho } from './who';
+
+/** A screen that stays mounted while its view lasts and is updated in place on every change. */
+export type GameView = {
+  update(s: ControllerState): void;
+  dispose(): void;
+  /** True while the screen holds the view (a shell in flight): the next view waits. */
+  busy?(): boolean;
+};
+
+export type GameViewOptions = {
+  c: GameController;
+  link: string;
+  /** `c.act`, but an unexpected throw is logged and reported as failed. */
+  act: (action: Action) => Promise<ApplyResult>;
+  /** Re-runs routing (after `busy()` turns false). */
+  repaint: () => void;
+  onShared: () => void;
+};
 
 type View =
   | 'loading'
@@ -66,6 +89,7 @@ export function renderGame(app: HTMLElement, o: GameScreenOptions): () => void {
   let disposed = false;
   let placing = false;
   let shown: View | null = null;
+  let view: GameView | null = null;
   const link = gameLink(o.id, o.secret);
   const markShared = () => void c?.markShared();
 
@@ -73,15 +97,23 @@ export function renderGame(app: HTMLElement, o: GameScreenOptions): () => void {
     body.replaceChildren(el('section', { class: 'screen' }, el('p', { class: 'spinner', role: 'status' }, t().loading)));
   };
 
-  const build = (view: View) => {
-    const m = t();
+  const act = (action: Action): Promise<ApplyResult> =>
+    c!.act(action).catch((e: unknown) => {
+      logError(e);
+      return { kind: 'failed', reason: 'offline' } as ApplyResult;
+    });
+  const viewOptions = (): GameViewOptions => ({ c: c!, link, act, repaint: () => paint(), onShared: markShared });
+
+  const build = (next: View) => {
     const s = c!.state;
-    switch (view) {
+    view?.dispose();
+    view = null;
+    switch (next) {
       case 'loading':
         return loading();
       case 'unavailable':
       case 'update-needed':
-        return renderUnavailable(body, { kind: view, onNewGame: o.onNewGame });
+        return renderUnavailable(body, { kind: next, onNewGame: o.onNewGame });
       case 'join':
         return renderJoin(body, {
           host: s.doc!.seats[0],
@@ -106,31 +138,41 @@ export function renderGame(app: HTMLElement, o: GameScreenOptions): () => void {
             paint();
           },
         });
-      default:
-        // Placement, battle and round over arrive with Task 16.
-        body.replaceChildren(
-          el(
-            'section',
-            { class: 'screen', 'data-phase': view },
-            el('p', { 'data-todo': 'task16' }, `${m.comingSoon} (${view})`),
-            el('a', { class: 'big', href: '#/' }, m.home),
-          ),
-        );
+      case 'placement':
+        view = renderPlacement(body, viewOptions());
+        return;
+      case 'battle':
+        view = renderBattle(body, viewOptions());
+        return;
+      case 'round-over':
+        view = renderRoundOver(body, viewOptions());
+        return;
     }
   };
 
   const paint = () => {
     if (!c || disposed) return;
-    const view = viewOf(c.state, placing);
-    if (view !== shown) {
-      shown = view;
-      build(view);
+    const s = c.state;
+    const next = viewOf(s, placing);
+    // A new round is a new placement screen (fresh dock, "same ships" offer).
+    const round = s.doc?.round ?? 0;
+    if (view?.busy?.()) {
+      // A shell in flight: its result shows first, then the next screen (it calls repaint).
+      view.update(s);
+    } else if (next !== shown || round !== shownRound) {
+      shown = next;
+      shownRound = round;
+      build(next);
+    } else {
+      view?.update(s);
     }
-    const kind = c.state.banner;
-    const show = kind !== null && view !== 'update-needed';
+    const kind = s.banner;
+    const show = kind !== null && shown !== 'update-needed';
     banner.hidden = !show;
     banner.textContent = show ? bannerText(kind) : '';
   };
+
+  let shownRound = 0;
 
   const relang = () => {
     shown = null;
@@ -145,6 +187,7 @@ export function renderGame(app: HTMLElement, o: GameScreenOptions): () => void {
     .then((ctrl) => {
       if (disposed) return ctrl.dispose();
       c = ctrl;
+      session.lastGameId = o.id;
       c.addEventListener('change', paint);
       paint();
     })
@@ -154,6 +197,7 @@ export function renderGame(app: HTMLElement, o: GameScreenOptions): () => void {
 
   return () => {
     disposed = true;
+    view?.dispose();
     window.removeEventListener('lang', relang);
     c?.removeEventListener('change', paint);
     c?.dispose();
