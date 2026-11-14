@@ -21,16 +21,26 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: dtolnay/rust-toolchain@stable
+      # No release tags: the pin must be a commit on master, and master needs `toolchain`.
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
+          toolchain: stable
           targets: wasm32-unknown-unknown
 
-      - uses: actions/setup-node@v4
+      # Reads the pnpm version from "packageManager" in package.json.
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          cache: true
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
-          cache: npm
+
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+        with:
+          just-version: 1.59.0
 
       - name: Install nats CLI
         run: |
@@ -42,22 +52,13 @@ jobs:
           sudo install -m 0755 "$RUNNER_TEMP/nats/${asset}/nats" /usr/local/bin/nats
           nats --version
 
-      - run: npm ci
-      - run: npm run test:rust
-      - run: npm test
-      - run: npm run typecheck
-
-      - name: Start local NATS
-        run: npm run nats:up
-
-      - run: npm run test:int
-      - run: npm run build
-
-      # The e2e suite arrives with Playwright config; these steps switch on then.
-      - name: Install Playwright browsers
-        if: hashFiles('playwright.config.ts') != ''
-        run: npx playwright install --with-deps chromium webkit
-
-      - name: End-to-end tests
-        if: hashFiles('playwright.config.ts') != ''
-        run: npm run e2e
+      # The same first step as the README: creates .env from .env.example, installs packages.
+      - run: just setup
+      - run: just test-rust
+      - run: just test
+      - run: just typecheck
+      - run: just nats-up
+      - run: just test-int
+      - run: just build
+      - run: just playwright-install --with-deps
+      - run: just e2e
