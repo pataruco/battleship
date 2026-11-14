@@ -1,6 +1,7 @@
 import './styles/base.css';
 import { startRouter, type Route } from './app/router';
 import { renderDevLocal } from './app/screens/dev-local';
+import { renderGame } from './app/screens/game';
 import { renderHome } from './app/screens/home';
 import { renderProfile } from './app/screens/profile';
 import { renderStart } from './app/screens/start';
@@ -20,24 +21,43 @@ function message(text: string, withHome = false): void {
 
 let dispose: () => void = () => {};
 let token = 0;
+/** Where a first run was going before the Profile step (keeps deep-link invites). */
+let afterProfile = '#/';
+
+/** Creates a game on the server and opens its invite. Rejects when offline. */
+async function newGame(): Promise<void> {
+  const { id, secret } = await session.newGame();
+  window.location.hash = `#/g/${id}/${secret}`;
+}
 
 async function render(route: Route): Promise<void> {
   if (!app) return;
   const mine = ++token;
   dispose();
   dispose = () => {};
-  if (route.name === 'home' || route.name === 'profile') {
+  if (route.name === 'home' || route.name === 'profile' || route.name === 'game') {
     const profile = await profileRepo.get().catch(() => null);
     if (mine !== token) return;
     session.state.set({ profile });
-    if (route.name === 'home' && !profile) {
+    if (route.name !== 'profile' && !profile) {
+      afterProfile = window.location.hash || '#/';
       window.location.hash = '#/profile';
       return;
     }
-    dispose =
-      route.name === 'home'
-        ? renderHome(app, { profile, onNewGame: () => message(t().comingSoon, true) })
-        : renderProfile(app, { profile, onSaved: () => (window.location.hash = '#/') });
+    if (route.name === 'game') {
+      dispose = renderGame(app, { id: route.id, secret: route.secret, onNewGame: newGame });
+    } else if (route.name === 'home') {
+      dispose = renderHome(app, { profile, onNewGame: newGame });
+    } else {
+      const firstRun = !profile;
+      dispose = renderProfile(app, {
+        profile,
+        onSaved: () => {
+          window.location.hash = firstRun ? afterProfile : '#/';
+          afterProfile = '#/';
+        },
+      });
+    }
   } else if (import.meta.env.DEV && route.name === 'dev-local') {
     renderDevLocal(app);
   } else if (route.name === 'not-found') {

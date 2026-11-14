@@ -3,7 +3,7 @@ import { newSession } from '../crypto/link';
 import { createSealer, type Sealer } from '../crypto/seal';
 import type { SeatIndex } from '../game/types';
 import { FakeBus, type FakeBusClient } from './fake-bus';
-import { Presence, type PresenceMsg } from './presence';
+import { Presence, SeatWatch, type PresenceMsg } from './presence';
 
 /** Manual clock for `now` / `setInterval`; `advance` runs due callbacks in time order. */
 class FakeClock {
@@ -228,5 +228,59 @@ describe('Presence', () => {
     expect(after.every((m) => m.seat === 1)).toBe(true);
     // a no longer listens: b's heartbeats don't reach it
     expect(a.seen.opponent).toEqual([true]);
+  });
+
+  it('leave publishes a pre-sealed bye synchronously and stops', async () => {
+    const a = make(0);
+    const b = make(1);
+    await a.p.start();
+    await b.p.start();
+    await settle();
+    const before = bus.log.length;
+    b.p.leave();
+    // Synchronous: the bye is on the bus before any await.
+    expect(bus.log.length).toBe(before + 1);
+    await settle();
+    expect(a.seen.opponent).toEqual([true, false]);
+    expect((await sent()).at(-1)).toMatchObject({ t: 'bye', seat: 1, playerId: 'p1', seq: 1 });
+    await clock.advance(30_000);
+    expect((await sent()).slice(before + 1).every((m) => m.seat === 0)).toBe(true);
+    b.p.leave(); // twice is fine
+    expect((await sent()).filter((m) => m.t === 'bye')).toHaveLength(1);
+  });
+
+  it('prepareBye re-seals the bye when seq changes', async () => {
+    const b = make(1);
+    await b.p.start();
+    await settle();
+    seqs[1] = 7;
+    await b.p.prepareBye();
+    b.p.leave();
+    expect((await sent()).at(-1)).toMatchObject({ t: 'bye', seq: 7 });
+  });
+});
+
+describe('SeatWatch', () => {
+  it('tracks which seats are here without sending anything', async () => {
+    const watcher = bus.client();
+    const w = new SeatWatch({ nc: watcher, sealer, id, now: clock.now });
+    const changes: number[] = [];
+    w.addEventListener('change', () => changes.push(1));
+    w.start();
+    const a = make(0);
+    await a.p.start();
+    await settle();
+    expect(w.isHere(0)).toBe(true);
+    expect(w.isHere(1)).toBe(false);
+    expect(changes.length).toBeGreaterThan(0);
+    clock.t += 45_000;
+    expect(w.isHere(0)).toBe(false);
+    await clock.advance(15_000); // next heartbeat
+    expect(w.isHere(0)).toBe(true);
+    await a.p.stop();
+    await settle();
+    expect(w.isHere(0)).toBe(false);
+    w.stop();
+    expect(bus.log.every((m) => m.from !== watcher)).toBe(true);
   });
 });

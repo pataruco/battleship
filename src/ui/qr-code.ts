@@ -38,3 +38,9 @@ export class QrCode extends HTMLElement {
 }
 
 if (!customElements.get('qr-code')) customElements.define('qr-code', QrCode);
+
+declare global {
+  interface HTMLElementTagNameMap {
+    'qr-code': QrCode;
+  }
+}

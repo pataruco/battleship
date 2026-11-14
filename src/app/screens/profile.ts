@@ -54,7 +54,8 @@ export function renderProfile(app: HTMLElement, deps: { profile: Profile | null;
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       error.textContent = '';
-      const clean = name.value.trim().slice(0, NAME_MAX);
+      // By code points, so an emoji is never cut in half.
+      const clean = Array.from(name.value.trim()).slice(0, NAME_MAX).join('').trim();
       if (!clean) {
         error.textContent = m.nameRequired;
         name.focus();
