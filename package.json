@@ -9,6 +9,7 @@
     "test:rust": "cargo test --manifest-path engine/Cargo.toml",
     "build": "npm run wasm && tsc --noEmit && vite build",
     "preview": "vite preview --port 4173",
+    "e2e": "playwright test",
     "test:int": "vitest run --project integration",
     "typecheck": "tsc --noEmit",
     "nats:up": "docker compose -f infra/nats/docker-compose.yml up -d && bash infra/nats/wait.sh && bash infra/nats/provision.sh",
