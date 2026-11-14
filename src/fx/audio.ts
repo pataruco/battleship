@@ -14,7 +14,7 @@ export function unlockAudio(): void {
     const Ctor = globalThis.AudioContext ?? (globalThis as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!Ctor) return;
     ctx ??= new Ctor();
-    void ctx.resume();
+    void ctx.resume().catch(() => {});
     if (!wired) {
       wired = true;
       const wake = () => void ctx?.resume().catch(() => {});
