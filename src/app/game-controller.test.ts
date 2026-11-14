@@ -25,10 +25,18 @@ const settle = () => new Promise((r) => setTimeout(r, 30));
 /** One device's view of the shared FakeKv, counting its own reads. */
 class CountingKv implements KvLike {
   gets = 0;
+  /** When set, the next reads wait for it (a load held in flight). */
+  getGate: Promise<void> | null = null;
   constructor(private readonly kv: FakeKv) {}
-  get(key: string): Promise<KvEntryLike | null> {
+  /** When set, the next reads see the value now but answer only when it opens (a slow reply). */
+  replyGate: Promise<void> | null = null;
+  async get(key: string): Promise<KvEntryLike | null> {
     this.gets++;
-    return this.kv.get(key);
+    if (this.getGate) await this.getGate;
+    const reply = this.replyGate;
+    const entry = await this.kv.get(key);
+    if (reply) await reply;
+    return entry;
   }
   create(key: string, value: Uint8Array): Promise<number> {
     return this.kv.create(key, value);
@@ -41,6 +49,8 @@ class CountingKv implements KvLike {
 class FakeConn extends EventTarget implements ConnLike {
   status: ConnStatus = 'online';
   kvCalls = 0;
+  /** When set, `kv()` waits for it (a rebuild held in flight). */
+  kvGate: Promise<void> | null = null;
   readonly kvView: CountingKv;
   constructor(
     kv: FakeKv,
@@ -49,9 +59,10 @@ class FakeConn extends EventTarget implements ConnLike {
     super();
     this.kvView = new CountingKv(kv);
   }
-  kv(): Promise<KvLike> {
+  async kv(): Promise<KvLike> {
     this.kvCalls++;
-    return Promise.resolve(this.kvView);
+    if (this.kvGate) await this.kvGate;
+    return this.kvView;
   }
   nc(): BusLike | null {
     return this.status === 'online' ? this.bus : null;
@@ -89,6 +100,13 @@ async function onDevice(name: string): Promise<void> {
     devices.set(name, f);
   }
   globalThis.indexedDB = f;
+}
+
+/** A promise the test opens by hand. */
+function gate(): { promise: Promise<void>; open: () => void } {
+  let open!: () => void;
+  const promise = new Promise<void>((r) => (open = r));
+  return { promise, open };
 }
 
 const noTimers = { setInterval: () => 0, clearInterval: () => {} };
@@ -443,5 +461,89 @@ describe('GameController', () => {
     const { c } = await openAs({ ...HOST, playerId: 'p0-laptop' }, id, secret);
     expect(c.state).toMatchObject({ status: 'ready', seat: 0, needsJoin: false });
   });
-});
 
+  it("a load landing while an action waits for the rebuild never erases the opponent's write", async () => {
+    const { id, secret } = await hostGame();
+    // The host hears no moved notes, so only its own loads bring news.
+    const host = await openAs(HOST, id, secret, new FakeConn(kv, new FakeBus().client()));
+    await onDevice('guest');
+    const guest = await openAs(GUEST, id, secret);
+    expect((await guest.c.join()).kind).toBe('ok');
+    await onDevice('host');
+    await host.c.refresh();
+    expect((await host.c.act({ type: 'place', seat: 0, fleet: FLEET_A })).kind).toBe('ok');
+
+    // A host load is held in flight while the guest places its fleet.
+    const get = gate();
+    host.conn.kvView.getGate = get.promise;
+    const loading = host.c.refresh();
+    await settle();
+    expect((await guest.c.act({ type: 'place', seat: 1, fleet: FLEET_B })).kind).toBe('ok');
+
+    // Resume: the host's next action waits for a fresh kv() ...
+    const rebuild = gate();
+    host.conn.kvGate = rebuild.promise;
+    host.conn.dispatchEvent(new Event('resume'));
+    const ready = host.c.act({ type: 'ready', seat: 0, coin: 0 });
+    await settle();
+    // ... while the held load lands and shows the guest's fleet.
+    host.conn.kvView.getGate = null;
+    get.open();
+    await settle(); // the resume queued a second load, which waits for the rebuild too
+    expect(host.c.state.doc?.fleets[1]).not.toBeNull();
+    rebuild.open();
+    expect((await ready).kind).toBe('ok');
+    await loading;
+    await settle();
+
+    const sealer = await createSealer(id, secret);
+    const server = (await sealer.openJson('doc', (await kv.get(`g.${id}`))!.value)) as GameDoc;
+    expect(server.ready[0]).toBe(true);
+    expect(server.fleets[1]).not.toBeNull();
+    expect(host.c.state.doc?.fleets[1]).not.toBeNull();
+  });
+
+  it('a rejected result never replaces a newer shown doc', async () => {
+    const { id, secret, host } = await battle();
+    await onDevice('host');
+    const deaf = await openAs(HOST, id, secret, new FakeConn(kv, new FakeBus().client()));
+    expect((await host.c.act({ type: 'fire', seat: 0, cell: 99 })).kind).toBe('ok'); // miss → their turn
+
+    // The stale window aims while a load (held) is about to bring the newer doc.
+    const get = gate();
+    deaf.conn.kvView.getGate = get.promise;
+    const loading = deaf.c.refresh();
+    await settle();
+    const rebuild = gate();
+    deaf.conn.kvGate = rebuild.promise;
+    deaf.conn.dispatchEvent(new Event('resume'));
+    const fire = deaf.c.act({ type: 'fire', seat: 0, cell: 3 });
+    await settle();
+    deaf.conn.kvView.getGate = null;
+    get.open();
+    await settle();
+    const shown = deaf.c.state.doc!;
+    expect(shown.shots[0]).toEqual([99]);
+    rebuild.open();
+    expect((await fire).kind).toBe('rejected');
+    await loading;
+    expect(deaf.c.state.doc?.shots[0]).toEqual([99]);
+    expect(deaf.c.state.doc?.seq).toBeGreaterThanOrEqual(shown.seq);
+  });
+
+  it('a slow load never replaces the doc an action showed meanwhile', async () => {
+    const { host } = await battle();
+    await onDevice('host');
+    const reply = gate();
+    host.conn.kvView.replyGate = reply.promise;
+    const loading = host.c.refresh();
+    await settle();
+    host.conn.kvView.replyGate = null;
+    expect((await host.c.act({ type: 'fire', seat: 0, cell: 55 })).kind).toBe('ok');
+    expect(host.c.state.doc?.shots[0]).toEqual([55]);
+    reply.open();
+    await loading;
+    await settle();
+    expect(host.c.state.doc?.shots[0]).toEqual([55]);
+  });
+});
