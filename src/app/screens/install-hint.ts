@@ -10,10 +10,16 @@ import { canInstall, isIosSafari, onInstallChange, promptInstall } from '../pwa'
  */
 export function installHint(): { node: HTMLElement; dispose: () => void } {
   const node = el('div', { class: 'install' });
-  // Shown once: remembered as soon as it appears, and kept on screen until dismissed or left.
-  let showHint = !getPrefs().installHintShown && (isIosSafari() || canInstall());
-  if (showHint) setPrefs({ installHintShown: true });
+  // Shown once: decided the first time the browser can use it (at once in iOS Safari, on
+  // `beforeinstallprompt` elsewhere), remembered then, and kept until dismissed or left.
+  let decided = false;
+  let showHint = false;
   const paint = () => {
+    if (!decided && (isIosSafari() || canInstall())) {
+      decided = true;
+      showHint = !getPrefs().installHintShown;
+      if (showHint) setPrefs({ installHintShown: true });
+    }
     const m = t();
     const parts: HTMLElement[] = [];
     if (canInstall()) {

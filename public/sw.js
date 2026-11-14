@@ -5,6 +5,9 @@ const PRECACHE = __PRECACHE__;
 const PREFIX = 'bship-';
 const CACHE = PREFIX + BUILD_ID;
 
+// Updates take over at once (skipWaiting + clients.claim), so a page may be running an older build
+// while the new worker serves it. That is safe only because the app is one JS bundle (no lazy
+// chunks to go missing) and a stale game doc is handled by the version checks (R9).
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches

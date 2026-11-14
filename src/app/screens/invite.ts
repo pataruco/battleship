@@ -1,15 +1,7 @@
 import { t } from '../../i18n';
 import '../../ui/qr-code';
 import { el } from '../el';
-
-/**
- * iOS Safari, not the Home Screen app (spec §13 iOS caveat, Review 8). iPadOS Safari reports a
- * Mac user agent, so a touch "Mac" counts as an iPad.
- */
-export function isIosSafari(nav: Navigator = navigator): boolean {
-  const ios = /iPhone|iPad|iPod/.test(nav.userAgent) || (/Macintosh/.test(nav.userAgent) && nav.maxTouchPoints > 1);
-  return ios && (nav as Navigator & { standalone?: boolean }).standalone !== true;
-}
+import { isIosSafari } from '../pwa';
 
 /** Copies `text`; when the clipboard is blocked, shows it in a prompt to copy by hand. */
 export async function copyText(text: string): Promise<boolean> {
