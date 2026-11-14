@@ -12,20 +12,20 @@ function memStore(initial?: string) {
 
 describe('prefs', () => {
   it('returns defaults when nothing is stored', () => {
-    expect(getPrefs(memStore())).toEqual({ lang: null, sound: true, voice: true });
+    expect(getPrefs(memStore())).toEqual({ lang: null, sound: true, voice: true, installHintShown: false });
   });
   it('merges patches and persists them', () => {
     const s = memStore();
     setPrefs({ lang: 'es' }, s);
     setPrefs({ sound: false }, s);
-    expect(getPrefs(s)).toEqual({ lang: 'es', sound: false, voice: true });
+    expect(getPrefs(s)).toEqual({ lang: 'es', sound: false, voice: true, installHintShown: false });
   });
   it('falls back to defaults on corrupt JSON', () => {
-    expect(getPrefs(memStore('{nope'))).toEqual({ lang: null, sound: true, voice: true });
+    expect(getPrefs(memStore('{nope'))).toEqual({ lang: null, sound: true, voice: true, installHintShown: false });
   });
   it('ignores wrongly typed stored fields', () => {
-    const s = memStore(JSON.stringify({ lang: 'fr', sound: 'x', voice: false }));
-    expect(getPrefs(s)).toEqual({ lang: null, sound: true, voice: false });
+    const s = memStore(JSON.stringify({ lang: 'fr', sound: 'x', voice: false, installHintShown: false }));
+    expect(getPrefs(s)).toEqual({ lang: null, sound: true, voice: false, installHintShown: false });
   });
   it('never throws when storage is blocked or full', () => {
     const blocked = {
@@ -36,11 +36,11 @@ describe('prefs', () => {
         throw new Error('QuotaExceededError');
       },
     };
-    expect(getPrefs(blocked)).toEqual({ lang: null, sound: true, voice: true });
+    expect(getPrefs(blocked)).toEqual({ lang: null, sound: true, voice: true, installHintShown: false });
     expect(() => setPrefs({ sound: false }, blocked)).not.toThrow();
   });
   it('never throws when localStorage is missing', () => {
-    expect(getPrefs()).toEqual({ lang: null, sound: true, voice: true });
+    expect(getPrefs()).toEqual({ lang: null, sound: true, voice: true, installHintShown: false });
     expect(() => setPrefs({ sound: false })).not.toThrow();
   });
 });

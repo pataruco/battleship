@@ -6,6 +6,7 @@ import { avatarIcon } from '../../theme/default/avatars';
 import { el } from '../el';
 import { linkToHash } from '../router';
 import { session, type Badge } from '../session';
+import { installHint } from './install-hint';
 
 const BADGE_ICON: Record<Badge, string> = {
   'your-turn': '⭐',
@@ -105,7 +106,10 @@ export function renderHome(
     else live.textContent = t().pasteBad;
   };
 
+  let hint: ReturnType<typeof installHint> | null = null;
   const build = () => {
+    hint?.dispose();
+    hint = installHint();
     const m = t();
     const prefs = getPrefs();
     const langButton = (l: Lang, label: string) => {
@@ -148,6 +152,7 @@ export function renderHome(
         live,
         el('h2', {}, m.myGames),
         games,
+        hint.node,
       ),
     );
     paintGames();
@@ -165,6 +170,7 @@ export function renderHome(
   window.addEventListener('lang', build);
   void session.refreshHome().catch(() => {});
   return () => {
+    hint?.dispose();
     session.state.removeEventListener('change', onChange);
     window.removeEventListener('lang', build);
   };
