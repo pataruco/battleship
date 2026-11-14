@@ -230,6 +230,8 @@ export class GameController extends EventTarget {
       // Doc and revision together, after the await: a load may have adopted a newer doc meanwhile.
       const current = this.s.doc;
       const res = await store.apply(action, { doc: current, revision: this.s.revision });
+      // A reaction is a nicety: when it doesn't go through, it is dropped without a banner.
+      const quiet = action.type === 'react';
       if (this.disposed) return res;
       if (res.kind === 'ok') {
         this.clearBanner(['retry', 'rejected']);
@@ -239,10 +241,10 @@ export class GameController extends EventTarget {
         const landed = alreadyApplied(action, res.doc, current);
         // Never step back behind a doc a load showed while the action was in flight.
         if (!this.s.doc || compareDocs(res.doc, this.s.doc) >= 0) await this.adopt(res.doc, res.revision, null);
-        this.set({ banner: landed ? null : 'rejected' });
+        if (!quiet) this.set({ banner: landed ? null : 'rejected' });
       } else if (res.reason === 'update-needed') {
         this.set({ status: 'update-needed', banner: 'update-needed' });
-      } else {
+      } else if (!quiet) {
         this.set({ banner: 'retry' });
       }
       return res;
