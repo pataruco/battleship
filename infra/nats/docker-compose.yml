@@ -1,5 +1,5 @@
 # The nats image is scratch-based (no shell, wget or curl), so there is no
-# container healthcheck. `npm run nats:up` polls readiness with the nats CLI.
+# container healthcheck. `just nats-up` polls readiness with the nats CLI.
 services:
   nats:
     image: nats:2.15

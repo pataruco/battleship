@@ -1,5 +1,5 @@
 // Renders public/icons/icon.svg to the PNG sizes the manifest and iOS need.
-// Run with `node scripts/icons.mjs` (uses Playwright's Chromium).
+// Run with `just icons` (uses Playwright's Chromium).
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
