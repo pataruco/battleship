@@ -284,3 +284,33 @@ describe('SeatWatch', () => {
     expect(bus.log.every((m) => m.from !== watcher)).toBe(true);
   });
 });
+
+describe('SeatWatch seq and Presence.abandon', () => {
+  it('SeatWatch fires seq for a higher seq than ours', async () => {
+    const w = new SeatWatch({ nc: bus.client(), sealer, id, now: clock.now, getSeq: () => 2 });
+    const seen: number[] = [];
+    w.addEventListener('seq', (e) => seen.push((e as CustomEvent<{ seq: number }>).detail.seq));
+    w.start();
+    const a = make(0);
+    await a.p.start(); // seq 1: not newer
+    await settle();
+    a.p.announceMoved(3);
+    await settle();
+    expect(seen).toEqual([3]);
+    w.stop();
+  });
+
+  it('abandon stops silently: no bye, opponent not told', async () => {
+    const a = make(0);
+    const b = make(1);
+    await a.p.start();
+    await b.p.start();
+    await settle();
+    const before = bus.log.length;
+    b.p.abandon();
+    await settle();
+    expect(bus.log.length).toBe(before);
+    expect(a.seen.opponent).toEqual([true]);
+  });
+});
+

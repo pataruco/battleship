@@ -122,7 +122,9 @@ export class GameController extends EventTarget {
   private store: GameStore | null = null;
   /** The connection the store and presence were built on. */
   private boundNc: BusLike | null = null;
-  private rebuilding: Promise<void> | null = null;
+  private rebuilding: Promise<boolean> | null = null;
+  /** Bumped on every resume: a rebuild started before it is stale. */
+  private generation = 0;
   private refreshing: Promise<void> | null = null;
   private refreshAgain = false;
   private presence: Presence | null = null;
@@ -157,9 +159,9 @@ export class GameController extends EventTarget {
   private async init(): Promise<void> {
     this.sealer = await createSealer(this.id, this.secret);
     const rec = await gamesRepo.get(this.id).catch(() => null);
-    if (rec?.doc) {
+    if (rec) {
       this.hasRecord = true;
-      this.set({ doc: rec.doc, revision: rec.revision, seat: rec.seat, status: 'ready' });
+      this.set(rec.doc ? { doc: rec.doc, revision: rec.revision, seat: rec.seat, status: 'ready' } : { seat: rec.seat });
     }
     this.conn.addEventListener('status', this.onStatus);
     this.conn.addEventListener('resume', this.onResume);
@@ -233,8 +235,8 @@ export class GameController extends EventTarget {
         void this.presence?.announceMoved(res.doc.seq);
       } else if (res.kind === 'rejected') {
         const landed = alreadyApplied(action, res.doc, current);
-        this.set({ banner: landed ? null : 'rejected' });
         await this.adopt(res.doc, res.revision, null);
+        this.set({ banner: landed ? null : 'rejected' });
       } else if (res.reason === 'update-needed') {
         this.set({ status: 'update-needed', banner: 'update-needed' });
       } else {
@@ -283,6 +285,7 @@ export class GameController extends EventTarget {
     await this.resolveSeat();
     if (this.hasRecord) await gamesRepo.saveAck(this.id, next, revision, lastMoveAt).catch(() => {});
     if (changed) {
+      this.clearBanner(['retry', 'rejected']);
       void this.presence?.prepareBye();
       this.dispatchEvent(new CustomEvent<MovedDetail>('moved', { detail: { prev, next, ...(outcome ? { outcome } : {}) } }));
     }
@@ -363,35 +366,49 @@ export class GameController extends EventTarget {
   }
 
   /** Builds the store and presence on the current connection when online and not yet bound. */
-  private ensureNet(): Promise<void> {
-    if (this.disposed || this.conn.status !== 'online') return Promise.resolve();
-    if (this.store && this.conn.nc() === this.boundNc) return Promise.resolve();
-    this.rebuilding ??= this.rebuild().finally(() => (this.rebuilding = null));
-    return this.rebuilding;
+  private async ensureNet(): Promise<void> {
+    // A resume during a rebuild makes that rebuild stale: go again (bounded).
+    for (let i = 0; i < 3; i++) {
+      if (this.disposed || this.conn.status !== 'online') return;
+      if (this.store && this.boundNc !== null && this.conn.nc() === this.boundNc) return;
+      if (!this.rebuilding) {
+        const p = this.rebuild().finally(() => {
+          if (this.rebuilding === p) this.rebuilding = null;
+        });
+        this.rebuilding = p;
+      }
+      if (!(await this.rebuilding)) return;
+    }
   }
 
-  private async rebuild(): Promise<void> {
+  /** False when the bucket couldn't be opened. */
+  private async rebuild(): Promise<boolean> {
+    const generation = this.generation;
     const nc = this.conn.nc();
     let kv: KvLike;
     try {
       kv = await this.conn.kv();
     } catch {
-      return;
+      if (!this.disposed) this.set({ banner: 'offline' });
+      return false;
     }
-    if (this.disposed) return;
+    if (this.disposed || generation !== this.generation) return true;
     this.store = new GameStore({ kv, sealer: this.sealer, id: this.id, engine: this.engine });
     this.boundNc = nc;
-    this.presenceKey = ''; // new connection: new presence
+    this.presenceKey = ''; // new connection or resume: new presence
     this.syncPresence();
+    return true;
   }
 
   /** Presence when seated, a listen-only watch on Who-are-you, nothing otherwise. */
   private syncPresence(): void {
     const nc = this.boundNc;
-    const key = !nc || this.disposed ? '' : this.s.seat !== null ? `seat${this.s.seat}` : this.s.needsWho ? 'watch' : '';
+    const unseated = this.s.needsJoin || this.s.needsWho;
+    const key = !nc || this.disposed ? '' : this.s.seat !== null ? `seat${this.s.seat}` : unseated ? 'watch' : '';
     if (key === this.presenceKey && (key === '' || this.presence || this.watch)) return;
     this.presenceKey = key;
-    this.presence?.leave();
+    // Silently: on the same connection we are still here, so no bye (no here → away → here).
+    this.presence?.abandon();
     this.presence = null;
     this.watch?.stop();
     this.watch = null;
@@ -399,8 +416,12 @@ export class GameController extends EventTarget {
     if (!nc || key === '') return;
 
     if (key === 'watch') {
-      const watch = new SeatWatch({ nc, sealer: this.sealer, id: this.id });
+      // Join and Who: no seat to announce, but notice seats arriving and the doc moving on.
+      const watch = new SeatWatch({ nc, sealer: this.sealer, id: this.id, getSeq: () => this.s.doc?.seq ?? 0 });
       watch.addEventListener('change', () => this.dispatchEvent(new Event('change')));
+      watch.addEventListener('seq', () => {
+        if (this.watch === watch) void this.refresh();
+      });
       try {
         watch.start();
         this.watch = watch;
@@ -456,16 +477,26 @@ export class GameController extends EventTarget {
   /** Back from a long hide (R1): fresh kv, fresh presence, then re-read. */
   private readonly onResume = (): void => {
     if (this.disposed) return;
+    this.generation++;
     this.boundNc = null;
+    this.rebuilding = null;
     void this.refresh();
   };
 
-  /** Heartbeats only while visible (spec §7 Presence). */
+  /**
+   * Heartbeats only while visible (spec §7 Presence). Back to visible always re-reads: a moved
+   * note may have been missed, and `resume` only comes after more than 5 s hidden.
+   */
   private readonly onVisibility = (): void => {
+    if (this.disposed) return;
     const p = this.presence;
-    if (!p || this.disposed) return;
-    if (this.page?.hidden) void p.stop().catch(() => {});
-    else void p.start().catch(() => {});
+    if (this.page?.hidden) {
+      void p?.stop().catch(() => {});
+      if (this.s.opponentHere) this.set({ opponentHere: false });
+      return;
+    }
+    void p?.start().catch(() => {});
+    void this.refresh();
   };
 
   /** The page may be frozen before any await resumes: the bye was sealed ahead of time. */

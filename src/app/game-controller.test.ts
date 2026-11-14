@@ -44,7 +44,7 @@ class FakeConn extends EventTarget implements ConnLike {
   readonly kvView: CountingKv;
   constructor(
     kv: FakeKv,
-    private readonly bus: BusLike,
+    readonly bus: BusLike,
   ) {
     super();
     this.kvView = new CountingKv(kv);
@@ -93,8 +93,23 @@ async function onDevice(name: string): Promise<void> {
 
 const noTimers = { setInterval: () => 0, clearInterval: () => {} };
 
-async function openAs(profile: Profile, id: string, secret: string, conn = new FakeConn(kv, bus.client())) {
-  const c = await GameController.open({ id, secret, profile, engine, conn, doc: null, win: null, presenceTimers: noTimers });
+/** A page whose visibility a test flips, with `pagehide` / `pageshow` on the same target. */
+class FakePage extends EventTarget {
+  hidden = false;
+  set(hidden: boolean): void {
+    this.hidden = hidden;
+    this.dispatchEvent(new Event('visibilitychange'));
+  }
+}
+
+async function openAs(
+  profile: Profile,
+  id: string,
+  secret: string,
+  conn = new FakeConn(kv, bus.client()),
+  page: FakePage | null = null,
+) {
+  const c = await GameController.open({ id, secret, profile, engine, conn, doc: page, win: page, presenceTimers: noTimers });
   open.push(c);
   await c.refresh();
   await settle();
@@ -325,4 +340,108 @@ describe('GameController', () => {
     expect(c.state.banner).toBeNull();
     expect(conn.kvView.gets).toBe(gets + 1);
   });
+
+  it('back from a short hide (no resume) → re-reads and sees the move it missed', async () => {
+    const { id, secret } = await hostGame();
+    const page = new FakePage();
+    const host = await openAs(HOST, id, secret, undefined, page);
+    await onDevice('guest');
+    const guest = await openAs(GUEST, id, secret);
+    await guest.c.join();
+    await settle();
+    expect(host.c.state.opponentHere).toBe(true);
+
+    page.set(true);
+    expect(host.c.state.opponentHere).toBe(false);
+    await settle();
+    expect((await guest.c.act({ type: 'react', seat: 1, emoji: '🔥' })).kind).toBe('ok');
+    await settle();
+    expect(host.c.state.doc?.reactions[1]).toBeNull(); // hidden: the moved note was missed
+
+    page.set(false);
+    await settle();
+    expect(host.c.state.doc?.reactions[1]?.emoji).toBe('🔥');
+  });
+
+  it('pagehide publishes the pre-sealed bye synchronously', async () => {
+    const { id, secret } = await hostGame();
+    const page = new FakePage();
+    const host = await openAs(HOST, id, secret, undefined, page);
+    await settle();
+    const before = bus.log.length;
+    page.dispatchEvent(new Event('pagehide'));
+    expect(bus.log.length).toBe(before + 1);
+    const last = bus.log.at(-1)!;
+    expect(last.from).toBe(host.conn.bus);
+    const sealer = await createSealer(id, secret);
+    expect(await sealer.openJson('here', last.data)).toMatchObject({ t: 'bye', seat: 0, playerId: 'p0' });
+  });
+
+  it('dispose leaves nothing running and ignores a later resume', async () => {
+    const { host, guest } = await battle();
+    host.c.dispose();
+    await settle();
+    const state = host.c.state;
+    const { kvCalls, gets } = { kvCalls: host.conn.kvCalls, gets: host.conn.kvView.gets };
+    host.conn.dispatchEvent(new Event('resume'));
+    host.conn.dispatchEvent(new CustomEvent('status', { detail: 'online' }));
+    expect((await guest.c.act({ type: 'react', seat: 1, emoji: '👏' })).kind).toBe('ok');
+    await settle();
+    await settle();
+    expect(host.conn.kvCalls).toBe(kvCalls);
+    expect(host.conn.kvView.gets).toBe(gets);
+    expect(host.c.state).toBe(state);
+  });
+
+  it('two guests racing for seat 1 → one seated, the other routed to Who', async () => {
+    const { id, secret } = await hostGame();
+    await onDevice('guests');
+    const g1 = await openAs(GUEST, id, secret);
+    const g2 = await openAs(THIRD, id, secret);
+    expect(g1.c.state.needsJoin && g2.c.state.needsJoin).toBe(true);
+    const [r1, r2] = await Promise.all([g1.c.join(), g2.c.join()]);
+    expect([r1.kind, r2.kind].sort()).toEqual(['ok', 'rejected']);
+    const [won, lost] = r1.kind === 'ok' ? [g1.c, g2.c] : [g2.c, g1.c];
+    expect(won.state).toMatchObject({ seat: 1, needsWho: false });
+    expect(lost.state).toMatchObject({ seat: null, needsJoin: false, needsWho: true });
+  });
+
+  it('a device waiting on Join switches to Who when someone else takes seat 1', async () => {
+    const { id, secret } = await hostGame();
+    await onDevice('waiter');
+    const waiter = await openAs(THIRD, id, secret);
+    expect(waiter.c.state.needsJoin).toBe(true);
+    await onDevice('guest');
+    const guest = await openAs(GUEST, id, secret);
+    await guest.c.join();
+    await settle();
+    await settle();
+    expect(waiter.c.state).toMatchObject({ needsJoin: false, needsWho: true });
+  });
+
+  it('a newer server doc clears the retry banner', async () => {
+    const { host, guest } = await battle();
+    kv.failNextUpdate('timeout-before-write');
+    expect((await host.c.act({ type: 'fire', seat: 0, cell: 99 })).kind).toBe('failed');
+    expect(host.c.state.banner).toBe('retry');
+    expect((await guest.c.act({ type: 'react', seat: 1, emoji: '😂' })).kind).toBe('ok');
+    await settle();
+    await settle();
+    expect(host.c.state.doc?.reactions[1]?.emoji).toBe('😂');
+    expect(host.c.state.banner).toBeNull();
+  });
+
+  it('a stored seat binding applies even without a cached doc', async () => {
+    const { id, secret } = await hostGame();
+    await onDevice('laptop');
+    const rec = (await (async () => {
+      await onDevice('host');
+      return gamesRepo.get(id);
+    })())!;
+    await onDevice('laptop');
+    await gamesRepo.put({ ...rec, doc: null, seat: 0, revision: 0, seq: 0 });
+    const { c } = await openAs({ ...HOST, playerId: 'p0-laptop' }, id, secret);
+    expect(c.state).toMatchObject({ status: 'ready', seat: 0, needsJoin: false });
+  });
 });
+
