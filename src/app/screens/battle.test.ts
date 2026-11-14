@@ -9,6 +9,7 @@ import type { ControllerState, GameController } from '../game-controller';
 import { FLIGHT_MS, renderBattle, WIN_HOLD_MS } from './battle';
 import type { GameView } from './game';
 
+const A_CELLS = fleetCells(FLEET_A);
 const B_CELLS = fleetCells(FLEET_B);
 const LAST = B_CELLS.at(-1)!;
 
@@ -128,6 +129,31 @@ describe('battle: the winning shot', () => {
     expect(roundOverShown).toBe(false);
     expect(document.querySelector('.result')!.textContent).toContain('You won!');
 
+    await vi.advanceTimersByTimeAsync(200);
+    expect(roundOverShown).toBe(true);
+    expect(view.busy?.()).toBe(false);
+  });
+});
+
+describe('battle: the losing shot', () => {
+  it("announces the opponent's winning shot before Round over takes the screen", async () => {
+    const prev = c.state.doc!;
+    const theirs = [...prev.shots[1].filter((x) => !A_CELLS.includes(x)), ...A_CELLS];
+    const last = theirs.at(-1)!;
+    const next: GameDoc = { ...prev, seq: prev.seq + 1, turn: 1, shots: [prev.shots[0], theirs], phase: 'over', winner: 1, score: [0, 1] };
+    // Like the controller: the change first, then the moved event.
+    c.set({ doc: next });
+    c.dispatchEvent(new CustomEvent('moved', { detail: { prev, next } }));
+    expect(roundOverShown).toBe(false);
+    expect(view.busy?.()).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(100);
+    expect(document.querySelector('.result')!.textContent).toMatch(/They sank your/);
+    expect(document.querySelector<HTMLElement>('.battle')!.dataset.fx).toBe('incoming-sunk');
+    expect(document.querySelector(`.own [data-cell="${last}"]`)).not.toBeNull();
+
+    await vi.advanceTimersByTimeAsync(WIN_HOLD_MS - 200);
+    expect(roundOverShown).toBe(false);
     await vi.advanceTimersByTimeAsync(200);
     expect(roundOverShown).toBe(true);
     expect(view.busy?.()).toBe(false);
