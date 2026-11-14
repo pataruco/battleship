@@ -21,7 +21,6 @@ async function main(): Promise<void> {
   }
   startRouter((route) => {
     if (import.meta.env.DEV && route.name === 'dev-local') renderDevLocal(app);
-    else if (route.name === 'home') message('Coming soon');
     else if (route.name === 'not-found') message('Page not found');
     else message('Coming soon');
   });

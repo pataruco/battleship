@@ -48,7 +48,7 @@ export class ShipDock extends HTMLElement {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'shuffle';
-    btn.textContent = 'Shuffle';
+    btn.textContent = '🔀 Shuffle';
     btn.addEventListener('click', () => this.shuffle());
     const hint = document.createElement('p');
     hint.className = 'hint';

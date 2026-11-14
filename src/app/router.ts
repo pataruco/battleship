@@ -11,7 +11,7 @@ const SECRET = /^[A-Za-z0-9_-]{22}$/;
 
 export function parseRoute(hash: string): Route {
   const path = hash.replace(/^#/, '').replace(/\/+$/, '');
-  if (path === '' ) return { name: 'home' };
+  if (path === '') return { name: 'home' };
   if (path === '/profile') return { name: 'profile' };
   if (path === '/debug') return { name: 'debug' };
   if (path === '/dev/local') return { name: 'dev-local' };
