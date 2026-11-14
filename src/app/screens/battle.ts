@@ -131,7 +131,7 @@ export function renderBattle(root: HTMLElement, o: GameViewOptions): GameView {
   let aim: Cell | null = null;
   /** The doc shown on the target board while a shell is in flight. */
   let held: GameDoc | null = null;
-  /** A win's result is on screen: Round over waits. */
+  /** A win's (or the opponent's winning shot's) result is on screen: Round over waits. */
   let celebrating = false;
   let disposed = false;
   const timers = new Set<ReturnType<typeof setTimeout>>();
@@ -248,27 +248,35 @@ export function renderBattle(root: HTMLElement, o: GameViewOptions): GameView {
     o.repaint();
   };
 
+  /** The opponent's latest shot, once per shot (from `update` on their win, or `moved`). */
+  let incomingAnnounced = '';
+  const announceIncoming = (prev: GameDoc, next: GameDoc) => {
+    const before = prev.shots[foe].length;
+    const after = next.shots[foe].length;
+    const key = `${next.round}:${after}`;
+    if (after <= before || key === incomingAnnounced) return;
+    incomingAnnounced = key;
+    const mm = t();
+    const cell = next.shots[foe][after - 1]!;
+    const state = safeBoardCells(next.fleets[seat], next.shots[foe], true)[cell];
+    const label = cellLabel(cell);
+    let words: string;
+    const spoken = mm.cellSpoken(label);
+    if (state === 'sunk') words = mm.theySank(mm.shipName(shipIndexAt(next.fleets[seat], cell)));
+    else if (state === 'hit') words = mm.theyHit(label);
+    else words = mm.theyMissed(label);
+    live.say(words);
+    const voiced = state === 'sunk' ? words : state === 'hit' ? mm.theyHit(spoken) : mm.theyMissed(spoken);
+    fx(`incoming-${state ?? 'miss'}`);
+    impact(own, cell, state === 'sunk' || state === 'hit' ? state : 'miss', state === 'sunk' ? shipCells(next.fleets[seat], shipIndexAt(next.fleets[seat], cell)) : [], later);
+    say(voiced);
+  };
+
   const onMoved = (e: Event) => {
     const { prev, next } = (e as CustomEvent<MovedDetail>).detail;
     if (disposed || !prev || prev.round !== next.round) return;
     const mm = t();
-    const before = prev.shots[foe].length;
-    const after = next.shots[foe].length;
-    if (after > before) {
-      const cell = next.shots[foe][after - 1]!;
-      const state = safeBoardCells(next.fleets[seat], next.shots[foe], true)[cell];
-      const label = cellLabel(cell);
-      let words: string;
-      const spoken = mm.cellSpoken(label);
-      if (state === 'sunk') words = mm.theySank(mm.shipName(shipIndexAt(next.fleets[seat], cell)));
-      else if (state === 'hit') words = mm.theyHit(label);
-      else words = mm.theyMissed(label);
-      live.say(words);
-      const voiced = state === 'sunk' ? words : state === 'hit' ? mm.theyHit(spoken) : mm.theyMissed(spoken);
-      fx(`incoming-${state ?? 'miss'}`);
-      impact(own, cell, state === 'sunk' || state === 'hit' ? state : 'miss', state === 'sunk' ? shipCells(next.fleets[seat], shipIndexAt(next.fleets[seat], cell)) : [], later);
-      say(voiced);
-    }
+    announceIncoming(prev, next);
     const reaction = newReaction(prev, next, foe);
     if (reaction) {
       fx('react');
@@ -277,6 +285,17 @@ export function renderBattle(root: HTMLElement, o: GameViewOptions): GameView {
       fxLayer().floatEmoji(reaction);
     }
   };
+
+  /** The doc this screen last showed. */
+  let lastShown: GameDoc | null = null;
+  /** The opponent's winning shot just arrived: hold the screen so it is seen and heard first. */
+  const theyJustWon = (doc: GameDoc | null): boolean =>
+    doc !== null &&
+    lastShown !== null &&
+    lastShown.phase === 'battle' &&
+    lastShown.round === doc.round &&
+    doc.phase === 'over' &&
+    doc.winner === foe;
 
   target.addEventListener('aim', (e) => setAim((e as CustomEvent<{ cell: Cell }>).detail.cell));
   // Keyboard: Enter (or Space) on the square that is already aimed fires.
@@ -312,6 +331,19 @@ export function renderBattle(root: HTMLElement, o: GameViewOptions): GameView {
   function update(s: ControllerState): void {
     const now = s.doc;
     if (!now || disposed) return;
+    if (theyJustWon(now) && !celebrating) {
+      // Their last shot lands on my sea, out loud, for as long as a win of mine would hold.
+      const prev = lastShown!;
+      lastShown = now;
+      celebrating = true;
+      announceIncoming(prev, now);
+      later(() => {
+        celebrating = false;
+        update(c.state);
+        o.repaint();
+      }, winHoldMs());
+    }
+    lastShown = now;
     const mm = t();
     const doc = held ?? now;
     target.cells = safeBoardCells(doc.fleets[foe], doc.shots[seat], false);
@@ -350,7 +382,7 @@ export function renderBattle(root: HTMLElement, o: GameViewOptions): GameView {
 
   return {
     update,
-    busy: () => held !== null || celebrating,
+    busy: () => held !== null || celebrating || theyJustWon(c.state.doc),
     dispose: () => {
       disposed = true;
       for (const id of timers) clearTimeout(id);
