@@ -100,7 +100,15 @@ You need the `nats` CLI, `jq` and the GitHub CLI (`gh`).
    nats --context synadia-bship-admin rtt
    ```
 
-   Keep `admin.creds` out of the repo. Git ignores `*.creds` files here.
+   Never commit a plaintext creds file. Git ignores `*.creds` files here. The repo keeps encrypted copies at `infra/nats/admin.creds.sops` and `infra/nats/browser.creds.sops`, made with [sops](https://github.com/getsops/sops) using the GPG keys listed in `.sops.yaml`:
+
+   ```sh
+   just creds-decrypt                               # writes ./admin.creds
+   just creds-decrypt browser                       # writes ./browser.creds
+   just creds-encrypt admin ~/Downloads/admin.creds # after rotating a user
+   ```
+
+   To give someone else access, add their GPG fingerprint to `.sops.yaml` (comma-separated), then run `sops updatekeys` on each `infra/nats/*.creds.sops` file.
 
 3. **Create the bucket as admin:**
 
@@ -122,7 +130,9 @@ You need the `nats` CLI, `jq` and the GitHub CLI (`gh`).
    - at most 50 subscriptions
    - WebSocket only, if the UI offers a connection-type limit
 
-   Download its creds file as `browser.creds`.
+   Download its creds file as `browser.creds`, and store the encrypted copy: `just creds-encrypt browser ./browser.creds`.
+
+   To run the app on your computer against Synadia instead of local NATS, run `just env-synadia`. It decrypts the browser creds into `.env` and sets `VITE_NATS_AUTH=creds` and `VITE_NATS_URL`. To go back to local NATS, run `rm .env && just env`. Never put the admin creds in `.env`: Vite copies every `VITE_*` value into the app's JavaScript.
 
 5. **Store the settings in GitHub.** The repository must be public for free Pages.
 
@@ -185,6 +195,7 @@ Use this when the credential was abused, or the connections or data allowance ar
 
    ```sh
    gh secret set VITE_NATS_CREDS < new-browser.creds
+   just creds-encrypt browser ./new-browser.creds
    ```
 
 3. Deploy, then wait for the workflow to finish:

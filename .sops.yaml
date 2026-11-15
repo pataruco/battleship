@@ -1,0 +1,4 @@
+# sops encrypts matching files to these keys. See infra/nats/README.md.
+creation_rules:
+  - path_regex: infra/nats/.*\.creds\.sops$
+    pgp: 8745589185EB578EF641A7C40C7E9C9F43BC213E

@@ -125,6 +125,26 @@ e2e *ARGS: env _nats-ready
 probe URL CREDS:
     PROBE_NATS_URL={{ quote(URL) }} PROBE_CREDS={{ quote(join(invocation_directory(), CREDS)) }} pnpm exec vitest run --project integration tests/integration/permissions.test.ts
 
+# Decrypt Synadia creds (admin or browser) to ./NAME.creds (git ignores it; needs sops and the GPG key)
+[group("secrets")]
+creds-decrypt NAME="admin": (_creds-name NAME)
+    umask 077; sops decrypt --input-type binary --output-type binary infra/nats/{{ NAME }}.creds.sops > {{ NAME }}.creds
+    @echo "wrote {{ NAME }}.creds"
+
+# Encrypt a Synadia creds file into infra/nats/NAME.creds.sops: just creds-encrypt browser ~/Downloads/browser.creds
+[group("secrets")]
+creds-encrypt NAME FILE: (_creds-name NAME)
+    tmp="$(mktemp)"; sops encrypt --input-type binary --output-type binary --filename-override infra/nats/{{ NAME }}.creds.sops {{ quote(FILE) }} > "$tmp" && mv "$tmp" infra/nats/{{ NAME }}.creds.sops
+
+# Point .env at Synadia with the decrypted browser creds (back to local NATS: rm .env && just env)
+[group("secrets")]
+env-synadia URL="wss://connect.ngs.global:443": env
+    sops decrypt --input-type binary --output-type binary infra/nats/browser.creds.sops | node scripts/env-creds.mjs .env {{ quote(URL) }}
+
+# Only admin and browser creds live in infra/nats/
+_creds-name NAME:
+    @case {{ quote(NAME) }} in admin|browser) ;; *) echo "NAME must be admin or browser, not {{ NAME }}" >&2; exit 1;; esac
+
 # Fails fast with a hint when local NATS is down or has no bucket
 _nats-ready:
     @nats --server {{ quote(nats_admin) }} --timeout 2s kv info bship_games >/dev/null 2>&1 || { echo "Local NATS is not up, or has no bship_games bucket. Run: just nats-up" >&2; exit 1; }
